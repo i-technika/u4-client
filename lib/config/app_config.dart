@@ -46,13 +46,29 @@ class AppConfig {
   }
 
   /// 번들된 flavor 설정 파일을 읽는다.
+  ///
+  /// asset 누락, JSON 형식 오류, 최상위 타입 오류도 파일 경로를 붙여
+  /// [AppConfigException]으로 던진다.
   static Future<AppConfig> load(Flavor flavor, {AssetBundle? bundle}) async {
-    final text = await (bundle ?? rootBundle).loadString(flavor.assetPath);
-    final config = AppConfig.fromJson(jsonDecode(text) as Map<String, Object?>);
+    final path = flavor.assetPath;
+    final String text;
+    try {
+      text = await (bundle ?? rootBundle).loadString(path);
+    } on FlutterError catch (e) {
+      throw AppConfigException('$path: asset을 읽지 못함 (${e.message})');
+    }
+    final Object? json;
+    try {
+      json = jsonDecode(text);
+    } on FormatException catch (e) {
+      throw AppConfigException('$path: JSON 형식 오류 (${e.message})');
+    }
+    if (json is! Map<String, Object?>) {
+      throw AppConfigException('$path: 최상위가 object가 아닙니다');
+    }
+    final config = AppConfig.fromJson(json);
     if (config.flavor != flavor) {
-      throw AppConfigException(
-        '${flavor.assetPath}의 flavor가 ${config.flavor.name}입니다',
-      );
+      throw AppConfigException('$path의 flavor가 ${config.flavor.name}입니다');
     }
     return config;
   }

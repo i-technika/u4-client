@@ -111,8 +111,9 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
   - 모르는 enum 값이나 틀린 타입은 JSON 경로와 함께 시작 시 바로 실패한다.
   - prod 제약(https, 개발용 옵션 금지)을 한 번 더 검사한다.
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
-  - 설정을 읽지 못하면 `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. release에서는 안내 문구만 보여 준다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 확인 화면과 설정 실패 화면 위젯 테스트(18개).
+  - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
+  - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류도 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 확인 화면과 설정 실패 화면 위젯 테스트(21개).
 
 ## 6. 확인 결과
 

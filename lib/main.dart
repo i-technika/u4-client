@@ -12,11 +12,13 @@ Future<void> main() async {
 ///
 /// 설정을 읽지 못하면 [ConfigErrorApp]을 돌려준다. `runApp` 전에 예외가 나면
 /// 네이티브 런치 화면에 멈춘 채 아무것도 보이지 않기 때문이다.
+///
+/// [AppConfigException]만 잡는다. 그 밖의 예외는 코드 버그이므로 업데이트 안내로
+/// 덮지 않고 그대로 던진다.
 Future<Widget> buildApp(Future<AppConfig> Function() loadConfig) async {
   try {
     return U4App(config: await loadConfig());
-  } catch (error, stack) {
-    // AppConfigException 외에 JSON 형식 오류, 타입 캐스트 실패, asset 누락도 여기로 온다.
+  } on AppConfigException catch (error, stack) {
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -52,13 +54,13 @@ class U4App extends StatelessWidget {
 
 /// 설정을 읽지 못했을 때 띄우는 앱.
 ///
-/// 설정이 없으므로 앱 이름·테마도 쓸 수 없다. release에서는 안내 문구만,
-/// 그 밖에는 원인을 바로 볼 수 있게 예외 내용도 보여 준다.
+/// 설정이 없으므로 앱 이름·테마 설정도 쓸 수 없다. debug에서만 원인을 바로 볼 수
+/// 있게 예외 내용도 보여 준다. profile 빌드는 실제 기기에서 QA가 쓰므로 숨긴다.
 class ConfigErrorApp extends StatelessWidget {
   const ConfigErrorApp({
     super.key,
     required this.error,
-    this.showDetails = !kReleaseMode,
+    this.showDetails = kDebugMode,
   });
 
   final Object error;
@@ -68,31 +70,39 @@ class ConfigErrorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(colorSchemeSeed: Colors.indigo),
+      darkTheme: ThemeData(
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.dark,
+      ),
       home: Scaffold(
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.error_outline, size: 48),
-                const SizedBox(height: 16),
-                const Text(
-                  '앱을 시작하지 못했습니다',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '앱을 최신 버전으로 업데이트한 뒤 다시 실행해 주세요.',
-                  textAlign: TextAlign.center,
-                ),
-                if (showDetails) ...[
-                  const SizedBox(height: 24),
-                  SelectableText('$error'),
+          // 예외 내용이 길거나 글꼴이 커도 넘치지 않게 스크롤한다.
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.error_outline, size: 48),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '앱을 시작하지 못했습니다',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '앱을 최신 버전으로 업데이트한 뒤 다시 실행해 주세요.',
+                    textAlign: TextAlign.center,
+                  ),
+                  if (showDetails) ...[
+                    const SizedBox(height: 24),
+                    SelectableText('$error'),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
