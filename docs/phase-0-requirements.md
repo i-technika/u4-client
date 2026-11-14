@@ -14,6 +14,7 @@
 
 - 웹뷰는 `flutter_inappwebview`를 쓴다. 공식 `webview_flutter`는 `window.open` 멀티 윈도우와 JS 다이얼로그 오버라이드가 약하다.
   - 안정판 6.1.5가 정체 상태이므로 **버전을 고정**하고, 웹뷰 호출부를 `WebViewAdapter` 레이어로 감싼다.
+  - 1단계에서 6.1.5가 AGP 9에서 빌드되지 않는 것을 확인해 6.2.0-beta.3으로 고정했다([phase-1-setup.md](phase-1-setup.md) 1장).
 - 네이티브 연동은 **표준 웹 API 폴리필**로 감싼다. 웹 코드는 브라우저 표준 그대로 두고, 앱이 웹뷰 콜백이나 폴리필로 가로챈다.
 - 앱 전용 기능은 `window.App.*` 네임스페이스와 `appready` 이벤트로 따로 노출한다(3단계).
 - 메인 화면과 팝업은 같은 `AppWebView` 위젯을 쓴다. 그래야 Alert·GPS·파일 처리가 팝업 안에서도 똑같이 동작한다.

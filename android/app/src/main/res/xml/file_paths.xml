@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 파일 업로드 촬영 결과 (8단계) -->
+    <cache-path name="camera" path="camera/" />
+    <!-- 다운로드한 파일을 다른 앱에 넘길 때 (10단계) -->
+    <files-path name="downloads" path="downloads/" />
+</paths>
