@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/i-technika/u4-client/config/app_config.schema.json",
+  "title": "AppConfig",
+  "description": "웹 하이브리드 앱 설정. flavor(dev/stg/prod)마다 app_config.<flavor>.json 하나를 둔다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["flavor", "app"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "flavor": {
+      "description": "빌드 flavor",
+      "enum": ["dev", "stg", "prod"]
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "startUrl", "allowedHosts"],
+      "properties": {
+        "name": {
+          "description": "앱 이름. Alert 시리즈 다이얼로그 제목으로도 쓴다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "startUrl": {
+          "description": "메인 웹뷰가 처음 로딩하는 URL",
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "allowedHosts": {
+          "description": "내부 웹뷰에서 여는 호스트. '*.example.com' 형태의 서브도메인 와일드카드 허용.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/hostPattern" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "externalHosts": {
+          "description": "항상 외부로 여는 호스트. allowedHosts보다 우선한다. 어느 목록에도 없는 호스트도 외부로 연다.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/hostPattern" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "userAgentSuffix": {
+          "description": "기본 UA 뒤에 붙는 문자열. {version}은 앱 버전, {platform}은 android/ios로 치환된다.",
+          "type": "string",
+          "default": "U4App/{version} ({platform})"
+        }
+      }
+    },
+    "splash": {
+      "description": "닫힘 시점 = max(시작 + minDisplayMs, 닫힘 조건 충족 + delayAfterLoadMs). maxWaitMs가 지나면 강제로 닫는다.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minDisplayMs": { "description": "앱 시작 기준 최소 노출 시간", "$ref": "#/$defs/ms", "default": 1000 },
+        "closeTrigger": {
+          "description": "onLoadStop: 메인 문서 로딩 완료 / onFirstPaint: 첫 화면 그리기 / webSignal: 웹이 App.splash.hide() 호출",
+          "enum": ["onLoadStop", "onFirstPaint", "webSignal"],
+          "default": "onLoadStop"
+        },
+        "delayAfterLoadMs": { "description": "닫힘 조건 충족 후 추가 대기 시간", "$ref": "#/$defs/ms", "default": 0 },
+        "maxWaitMs": { "description": "무한 스플래시 방지용 최대 대기 시간", "$ref": "#/$defs/ms", "default": 10000 },
+        "fadeOutMs": { "$ref": "#/$defs/ms", "default": 300 },
+        "bgColor": { "$ref": "#/$defs/themedColor", "default": { "light": "#FFFFFF", "dark": "#000000" } },
+        "image": { "description": "스플래시 이미지 asset 경로. 네이티브 스플래시와 같은 이미지를 쓴다.", "type": "string" },
+        "showProgress": { "type": "boolean", "default": false }
+      }
+    },
+    "systemUi": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "statusBar": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "description": "visible: 웹뷰가 상태바 아래에 배치 / overlay: edge-to-edge / hidden",
+              "enum": ["visible", "overlay", "hidden"],
+              "default": "visible"
+            },
+            "style": { "$ref": "#/$defs/barStyle" },
+            "color": { "$ref": "#/$defs/themedColor" }
+          }
+        },
+        "navigationBar": {
+          "description": "Android 하단 바. Android 15+는 edge-to-edge가 강제된다.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "enum": ["visible", "overlay", "hidden"], "default": "visible" },
+            "style": { "$ref": "#/$defs/barStyle" },
+            "color": { "$ref": "#/$defs/themedColor" }
+          }
+        },
+        "safeAreaHandling": {
+          "description": "native: Flutter가 패딩 / css: --safe-area-inset-* 변수를 주입하고 웹이 처리 (Android WebView 140 미만의 env() 오류 대응)",
+          "enum": ["native", "css"],
+          "default": "css"
+        },
+        "immersive": { "description": "전체화면 몰입 모드", "type": "boolean", "default": false },
+        "allowWebControl": {
+          "description": "웹이 App.ui.setStatusBar() 등으로 페이지별 변경하는 것을 허용",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "themeMode": { "enum": ["light", "dark", "system"], "default": "system" },
+        "propagateToWeb": {
+          "description": "prefers-color-scheme 동기화 + <html data-theme> 주입",
+          "type": "boolean",
+          "default": true
+        },
+        "allowWebOverride": {
+          "description": "웹이 App.theme.set()으로 변경하는 것을 허용",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "screen": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orientation": { "enum": ["portrait", "landscape", "auto"], "default": "portrait" },
+        "allowWebOrientationChange": {
+          "description": "웹이 페이지별로 화면 방향을 바꾸는 것을 허용 (동영상 전체화면 회전은 별도로 항상 허용)",
+          "type": "boolean",
+          "default": false
+        },
+        "textZoomFixed": { "description": "Android OS 글꼴 배율을 무시하고 textZoom 100 고정", "type": "boolean", "default": true },
+        "pinchZoom": { "type": "boolean", "default": false },
+        "textSelection": { "type": "boolean", "default": true },
+        "longPressMenu": { "description": "링크 미리보기·롱프레스 메뉴", "type": "boolean", "default": false },
+        "overscroll": { "description": "iOS 바운스 / Android 오버스크롤 효과", "type": "boolean", "default": false },
+        "pullToRefresh": { "type": "boolean", "default": true }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "androidBack": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "description": "historyThenExit: 히스토리 back → 팝업 닫기 → 종료 확인 / exitOnly: 바로 종료 확인",
+              "enum": ["historyThenExit", "exitOnly"],
+              "default": "historyThenExit"
+            },
+            "exitConfirm": {
+              "description": "doubleTap: 두 번 눌러 종료 / dialog: 종료 확인 다이얼로그",
+              "enum": ["doubleTap", "dialog"],
+              "default": "doubleTap"
+            }
+          }
+        },
+        "iosSwipeBack": { "type": "boolean", "default": true },
+        "externalLinkMode": {
+          "description": "외부 호스트 링크를 여는 방식. inAppBrowser는 Custom Tabs / SFSafariViewController.",
+          "enum": ["system", "inAppBrowser", "block"],
+          "default": "system"
+        }
+      }
+    },
+    "popup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "presentation": { "enum": ["push", "modal", "sheet"], "default": "push" },
+        "toolbar": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "closeButton": { "type": "boolean", "default": true },
+            "title": { "description": "document.title 표시", "type": "boolean", "default": true },
+            "progressBar": { "type": "boolean", "default": true }
+          }
+        },
+        "maxDepth": { "description": "팝업 중첩 상한 (메모리 보호)", "type": "integer", "minimum": 1, "maximum": 10, "default": 5 }
+      }
+    },
+    "dialog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "style": { "enum": ["platform", "material", "cupertino"], "default": "platform" },
+        "labels": {
+          "description": "버튼 라벨. 생략하면 locale 기본값.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "string" },
+            "cancel": { "type": "string" },
+            "leavePage": { "description": "beforeunload 확인 버튼", "type": "string" }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestOnLaunch": {
+          "description": "앱 시작 시 일괄 요청할 권한. 비우면 기능을 쓸 때 요청한다.",
+          "type": "array",
+          "items": { "enum": ["location", "camera", "microphone", "photos", "notification"] },
+          "uniqueItems": true,
+          "default": []
+        },
+        "deniedGuide": { "description": "영구 거부 시 설정 앱 이동 안내", "type": "boolean", "default": true }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "offlinePage": { "description": "오프라인 시 보여줄 로컬 asset 경로", "type": "string" },
+        "errorPage": { "description": "로딩 에러 시 보여줄 로컬 asset 경로", "type": "string" },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "autoOnReconnect": { "description": "네트워크 복구 시 자동 리로드", "type": "boolean", "default": true },
+            "maxAttempts": { "type": "integer", "minimum": 0, "default": 3 }
+          }
+        },
+        "allowHttp": { "description": "비SSL 허용 (dev 전용)", "type": "boolean", "default": false },
+        "ignoreSslErrors": { "description": "SSL 오류 무시 (dev 전용)", "type": "boolean", "default": false },
+        "debuggable": { "description": "웹뷰 원격 디버깅 (Android setWebContentsDebuggingEnabled, iOS isInspectable)", "type": "boolean", "default": false },
+        "secureScreen": { "description": "캡처 방지 (FLAG_SECURE / iOS 보안 오버레이)", "type": "boolean", "default": false },
+        "clearCacheOnLaunch": { "type": "boolean", "default": false },
+        "cacheMode": { "enum": ["default", "noCache", "cacheElseNetwork"], "default": "default" }
+      }
+    },
+    "extras": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false }
+          }
+        },
+        "deeplink": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "domains": {
+              "description": "App Link / Universal Link 도메인",
+              "type": "array",
+              "items": { "$ref": "#/$defs/hostPattern" },
+              "uniqueItems": true,
+              "default": []
+            }
+          }
+        },
+        "forceUpdate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "checkUrl": { "description": "최소 버전 정보를 돌려주는 URL", "type": "string", "format": "uri" }
+          },
+          "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": { "required": ["checkUrl"] }
+        },
+        "locale": {
+          "description": "다이얼로그 등 앱 문구 언어. system이면 OS 설정을 따른다.",
+          "type": "string",
+          "default": "system"
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": { "flavor": { "const": "prod" } },
+    "required": ["flavor"]
+  },
+  "then": {
+    "properties": {
+      "app": { "properties": { "startUrl": { "pattern": "^https://" } } },
+      "network": {
+        "properties": {
+          "allowHttp": { "const": false },
+          "ignoreSslErrors": { "const": false },
+          "debuggable": { "const": false }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ms": { "type": "integer", "minimum": 0 },
+    "hostPattern": {
+      "type": "string",
+      "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$"
+    },
+    "color": { "type": "string", "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$" },
+    "themedColor": {
+      "description": "라이트/다크 테마별 색상 (#RRGGBB 또는 #AARRGGBB)",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": { "$ref": "#/$defs/color" },
+        "dark": { "$ref": "#/$defs/color" }
+      }
+    },
+    "barStyle": {
+      "description": "아이콘 색. auto는 테마에 따라 바뀐다.",
+      "enum": ["auto", "light", "dark"],
+      "default": "auto"
+    }
+  }
+}

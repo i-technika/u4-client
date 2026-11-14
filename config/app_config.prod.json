@@ -1,0 +1,104 @@
+{
+  "$schema": "./app_config.schema.json",
+  "flavor": "prod",
+  "app": {
+    "name": "U4",
+    "startUrl": "https://www.example.com/",
+    "allowedHosts": [
+      "www.example.com"
+    ],
+    "externalHosts": [],
+    "userAgentSuffix": "U4App/{version} ({platform})"
+  },
+  "splash": {
+    "minDisplayMs": 1000,
+    "closeTrigger": "onLoadStop",
+    "delayAfterLoadMs": 0,
+    "maxWaitMs": 10000,
+    "fadeOutMs": 300,
+    "bgColor": {
+      "light": "#FFFFFF",
+      "dark": "#000000"
+    },
+    "image": "assets/splash/splash.png",
+    "showProgress": false
+  },
+  "systemUi": {
+    "statusBar": {
+      "mode": "visible",
+      "style": "auto"
+    },
+    "navigationBar": {
+      "mode": "visible",
+      "style": "auto"
+    },
+    "safeAreaHandling": "css",
+    "immersive": false,
+    "allowWebControl": false
+  },
+  "theme": {
+    "themeMode": "system",
+    "propagateToWeb": true,
+    "allowWebOverride": false
+  },
+  "screen": {
+    "orientation": "portrait",
+    "allowWebOrientationChange": false,
+    "textZoomFixed": true,
+    "pinchZoom": false,
+    "textSelection": true,
+    "longPressMenu": false,
+    "overscroll": false,
+    "pullToRefresh": true
+  },
+  "navigation": {
+    "androidBack": {
+      "mode": "historyThenExit",
+      "exitConfirm": "doubleTap"
+    },
+    "iosSwipeBack": true,
+    "externalLinkMode": "system"
+  },
+  "popup": {
+    "presentation": "push",
+    "toolbar": {
+      "closeButton": true,
+      "title": true,
+      "progressBar": true
+    },
+    "maxDepth": 5
+  },
+  "dialog": {
+    "style": "platform"
+  },
+  "permissions": {
+    "requestOnLaunch": [],
+    "deniedGuide": true
+  },
+  "network": {
+    "offlinePage": "assets/pages/offline.html",
+    "errorPage": "assets/pages/error.html",
+    "retry": {
+      "autoOnReconnect": true,
+      "maxAttempts": 3
+    },
+    "allowHttp": false,
+    "ignoreSslErrors": false,
+    "debuggable": false,
+    "secureScreen": false,
+    "clearCacheOnLaunch": false,
+    "cacheMode": "default"
+  },
+  "extras": {
+    "push": {
+      "enabled": false
+    },
+    "deeplink": {
+      "domains": []
+    },
+    "forceUpdate": {
+      "enabled": false
+    },
+    "locale": "system"
+  }
+}
