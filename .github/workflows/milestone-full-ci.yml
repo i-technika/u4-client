@@ -22,6 +22,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Sub-issue Linux CI와 같은 설정 스키마 검증 (#4)
+      - name: Validate config JSON against schema
+        env:
+          CHECK_JSONSCHEMA: check-jsonschema==0.38.2
+        run: |
+          pipx run --spec "$CHECK_JSONSCHEMA" check-jsonschema \
+            --check-metaschema config/app_config.schema.json
+          pipx run --spec "$CHECK_JSONSCHEMA" check-jsonschema \
+            --schemafile config/app_config.schema.json \
+            config/app_config.dev.json config/app_config.stg.json config/app_config.prod.json
+
       - name: Read Flutter version (.fvmrc)
         id: fvm
         run: echo "version=$(jq -r .flutter .fvmrc)" >> "$GITHUB_OUTPUT"

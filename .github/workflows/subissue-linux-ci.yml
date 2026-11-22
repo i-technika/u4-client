@@ -23,6 +23,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 설정 파일을 스키마로 검증한다 (모르는 키, 범위·형식 제약, prod 제약 — #4).
+      # 앱 로더는 모르는 키·enum·타입·prod 제약만 다시 검사하므로 나머지는 여기서 막는다.
+      # glob(app_config.*.json)은 스키마 파일까지 잡으므로 flavor 파일을 직접 나열한다.
+      - name: Validate config JSON against schema
+        env:
+          CHECK_JSONSCHEMA: check-jsonschema==0.38.2
+        run: |
+          pipx run --spec "$CHECK_JSONSCHEMA" check-jsonschema \
+            --check-metaschema config/app_config.schema.json
+          pipx run --spec "$CHECK_JSONSCHEMA" check-jsonschema \
+            --schemafile config/app_config.schema.json \
+            config/app_config.dev.json config/app_config.stg.json config/app_config.prod.json
+
       # Flutter 버전은 .fvmrc 한 곳에서 관리한다.
       - name: Read Flutter version (.fvmrc)
         id: fvm

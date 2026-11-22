@@ -114,6 +114,8 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - `lib/config/app_config.dart`: 0단계 스키마를 그대로 옮긴 불변 모델이다.
   - 생략한 값은 스키마 기본값으로 채운다.
   - 모르는 enum 값이나 틀린 타입은 JSON 경로와 함께 시작 시 바로 실패한다.
+  - 스키마에 없는 키(오타 포함)도 경로를 모두 모아 실패한다(#4). 오타 난 키가 조용히 무시되어 기본값이 쓰이는 것을 막는다. 그래서 모델은 스키마의 모든 키를 조건 없이 읽어야 하고, 스키마에 키를 추가하면 모델도 함께 고쳐야 로딩된다(`스키마에 정의된 키는 모델이 모두 읽는다` 테스트가 확인한다).
+  - 범위·형식 제약(ms ≥ 0, hostPattern 등)은 CI의 `check-jsonschema` 단계가 번들 설정 파일을 스키마로 검증해 막는다.
   - prod 제약(https, 개발용 옵션 금지)을 한 번 더 검사한다.
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.

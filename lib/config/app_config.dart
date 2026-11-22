@@ -7,7 +7,8 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 /// `config/app_config.<flavor>.json`을 읽어 만든 앱 설정.
 ///
 /// 구조와 기본값은 `config/app_config.schema.json`을 따른다. 스키마 검증은
-/// 에디터와 CI에서 하고, 여기서는 기본값 채우기·enum 변환·prod 제약만 다시 검사한다.
+/// 에디터와 CI(`check-jsonschema`)에서 하고, 여기서는 기본값 채우기·enum 변환·
+/// 모르는 키 거부·prod 제약을 다시 검사한다.
 @immutable
 class AppConfig {
   const AppConfig({
@@ -27,6 +28,8 @@ class AppConfig {
 
   factory AppConfig.fromJson(Map<String, Object?> json) {
     final r = _Reader(json, r'$');
+    // 에디터용 스키마 참조. 값은 쓰지 않지만 읽은 키로 기록한다.
+    r.optString(r'$schema');
     final config = AppConfig(
       flavor: r.choice('flavor', Flavor.values),
       app: AppInfo._(r.child('app')),
@@ -41,6 +44,9 @@ class AppConfig {
       network: NetworkConfig._(r.child('network')),
       extras: ExtrasConfig._(r.child('extras')),
     );
+    // 오타 난 키 때문에 생긴 다른 검증 오류보다 먼저 알린다
+    // (예: checkUrl 오타 → "checkUrl이 필요합니다"가 아니라 오타 위치를 보여 준다).
+    r.rejectUnknownKeys();
     config._validate();
     return config;
   }
@@ -518,19 +524,52 @@ class ThemedColor {
 }
 
 /// 경로를 붙여 에러를 알려 주는 JSON 읽기 도우미.
+///
+/// 읽은 키를 기록해 두었다가 [rejectUnknownKeys]에서 남은 키를 거부한다.
+/// 그래서 모델은 스키마의 모든 키를 값과 상관없이 **조건 없이** 읽어야 한다
+/// (예: `enabled`가 false일 때만 `checkUrl`을 읽지 않으면 정상 키가 거부된다).
 class _Reader {
   _Reader(this._map, this._path);
 
   final Map<String, Object?> _map;
   final String _path;
+  final Set<String> _readKeys = {};
+  final List<_Reader> _children = [];
 
   /// 하위 object를 읽는 reader. JSON object 하나는 reader 하나로 읽도록
   /// 같은 [key]로는 한 번만 부른다.
   _Reader child(String key) {
+    _readKeys.add(key);
     final v = _map[key];
-    if (v == null) return _Reader(const {}, '$_path.$key');
-    if (v is! Map<String, Object?>) throw _type(key, 'object');
-    return _Reader(v, '$_path.$key');
+    final _Reader reader;
+    if (v == null) {
+      reader = _Reader(const {}, '$_path.$key');
+    } else if (v is Map<String, Object?>) {
+      reader = _Reader(v, '$_path.$key');
+    } else {
+      throw _type(key, 'object');
+    }
+    _children.add(reader);
+    return reader;
+  }
+
+  /// 이 object와 하위 object에서 읽지 않은 키(오타, 스키마에 없는 키)가 있으면
+  /// 전부 모아 실패한다. 모든 값을 읽은 뒤 최상위 reader에서 한 번 부른다.
+  void rejectUnknownKeys() {
+    final unknown = <String>[];
+    _collectUnknownKeys(unknown);
+    if (unknown.isNotEmpty) {
+      throw AppConfigException('스키마에 없는 키: ${unknown.join(', ')}');
+    }
+  }
+
+  void _collectUnknownKeys(List<String> out) {
+    for (final key in _map.keys) {
+      if (!_readKeys.contains(key)) out.add('$_path.$key');
+    }
+    for (final c in _children) {
+      c._collectUnknownKeys(out);
+    }
   }
 
   bool boolean(String key, bool fallback) =>
@@ -627,6 +666,7 @@ class _Reader {
   }
 
   T? _get<T>(String key, String typeName) {
+    _readKeys.add(key);
     final v = _map[key];
     if (v == null) return null;
     if (v is! T) throw _type(key, typeName);
