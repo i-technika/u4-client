@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 
@@ -127,6 +130,88 @@ void main() {
       expect(
         () => AppConfig.fromJson(json),
         throwsA(isA<AppConfigException>()),
+      );
+    });
+  });
+
+  group('권한 (#3)', () {
+    PermissionsConfig permissions(List<String> requestOnLaunch) =>
+        AppConfig.fromJson({
+          'flavor': 'dev',
+          'app': {
+            'name': 'Test',
+            'startUrl': 'https://example.com/',
+            'allowedHosts': ['example.com'],
+          },
+          'permissions': {'requestOnLaunch': requestOnLaunch},
+        }).permissions;
+
+    test('photos는 설정 검증을 통과하고 원래 목록에 남는다', () {
+      final config = permissions(['camera', 'photos', 'location']);
+      expect(config.requestOnLaunch, [
+        AppPermission.camera,
+        AppPermission.photos,
+        AppPermission.location,
+      ]);
+    });
+
+    test('Android에서는 photos를 건너뛰고 순서를 유지한다', () {
+      final config = permissions(['camera', 'photos', 'location']);
+      expect(config.requestOnLaunchOn(TargetPlatform.android), [
+        AppPermission.camera,
+        AppPermission.location,
+      ]);
+    });
+
+    test('iOS에서는 설정한 권한을 모두 요청한다', () {
+      final config = permissions(['camera', 'photos', 'location']);
+      expect(
+        config.requestOnLaunchOn(TargetPlatform.iOS),
+        config.requestOnLaunch,
+      );
+    });
+
+    test('Android에서 photos만 있으면 요청할 권한이 없다', () {
+      expect(
+        permissions(['photos']).requestOnLaunchOn(TargetPlatform.android),
+        isEmpty,
+      );
+    });
+
+    test('iOS에서는 모든 권한을 요청할 수 있다', () {
+      for (final p in AppPermission.values) {
+        expect(p.isRequestableOn(TargetPlatform.iOS), isTrue, reason: p.name);
+      }
+    });
+
+    test('Android에서 요청할 수 없는 권한은 photos뿐이다', () {
+      expect(
+        AppPermission.values.where(
+          (p) => !p.isRequestableOn(TargetPlatform.android),
+        ),
+        [AppPermission.photos],
+      );
+    });
+
+    test('Android 매니페스트가 사진 권한을 제거하는 것과 일치한다', () {
+      // 매니페스트에서 제거를 풀면 photos를 Android에서도 요청하도록 함께 바꿔야 한다.
+      final manifest = File('android/app/src/main/AndroidManifest.xml')
+          .readAsStringSync();
+      for (final name in ['READ_MEDIA_IMAGES', 'READ_EXTERNAL_STORAGE']) {
+        expect(
+          manifest,
+          matches(
+            RegExp(
+              'android:name="android\\.permission\\.$name"\\s+'
+              'tools:node="remove"',
+            ),
+          ),
+          reason: name,
+        );
+      }
+      expect(
+        AppPermission.photos.isRequestableOn(TargetPlatform.android),
+        isFalse,
       );
     });
   });

@@ -87,6 +87,9 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - **권한:** 인터넷, 네트워크 상태, 위치(정확·대략), 카메라, 마이크, 알림(Android 13+).
   - 카메라·GPS는 `uses-feature required="false"`로 두어 해당 하드웨어가 없는 기기도 설치할 수 있다.
   - 저장소·미디어 권한은 쓰지 않는다. `open_filex`가 추가하는 `READ_MEDIA_*`는 Play 사진·동영상 권한 정책 심사 대상이라 `tools:node="remove"`로 제거했다.
+    - 사진·파일은 시스템 피커(Photo Picker)로 고르므로 권한이 필요 없다.
+    - 그래서 설정의 `permissions.requestOnLaunch`에 `photos`가 있어도 Android에서는 요청하지 않는다(iOS에서만 요청). 선언이 없는 권한을 요청하면 곧바로 거부되고, `deniedGuide`가 켤 수 없는 권한 때문에 설정 앱으로 보내기 때문이다.
+    - 권한 요청 코드는 `PermissionsConfig.requestOnLaunchOn(platform)`으로 플랫폼별 목록을 받는다. 플랫폼별 가능 여부는 `AppPermission.isRequestableOn`이 정한다 (#3).
   - CAMERA를 선언했으므로, 카메라 인텐트를 실행하기 전에 반드시 런타임 권한을 받아야 한다(8단계). 그렇지 않으면 크래시한다.
 - **`<queries>`:** `tel`(DIAL), `sms`·`mailto`(SENDTO), `geo`(VIEW), `https`(VIEW), Custom Tabs 서비스, 이미지·동영상 촬영 인텐트.
 - **FileProvider:** `U4FileProvider`(authority `${applicationId}.fileprovider`)를 쓴다. 플러그인들도 `androidx.core.content.FileProvider`를 등록하므로, 매니페스트 병합 충돌을 피하려고 하위 클래스로 만들었다. 경로는 `res/xml/file_paths.xml`의 `cache/camera/`, `files/downloads/`다.
@@ -118,14 +121,14 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
   - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류도 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 확인 화면과 설정 실패 화면 위젯 테스트(22개).
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 확인 화면과 설정 실패 화면 위젯 테스트(29개).
 
 ## 6. 확인 결과
 
 | 항목 | 결과 |
 |---|---|
 | `flutter analyze` | 이슈 없음 |
-| `flutter test` | 22개 통과 |
+| `flutter test` | 29개 통과 |
 | `flutter build apk --debug --flavor dev` / `stg` | 성공 |
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |

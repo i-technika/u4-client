@@ -399,7 +399,29 @@ class DialogConfig {
 
 // ---- permissions ----
 
-enum AppPermission { location, camera, microphone, photos, notification }
+/// 설정에서 고를 수 있는 런타임 권한.
+///
+/// 플랫폼마다 요청할 수 있는 권한이 다르다. [isRequestableOn]으로 확인한다.
+enum AppPermission {
+  location,
+  camera,
+  microphone,
+
+  /// 사진 보관함. iOS에서만 요청하고 Android에서는 건너뛴다.
+  ///
+  /// Android는 사진·파일을 시스템 피커(Photo Picker)로 고르므로 권한이 필요 없다.
+  /// 그래서 매니페스트에서 `READ_MEDIA_IMAGES`·`READ_EXTERNAL_STORAGE`를 제거했다
+  /// (Play 사진·동영상 권한 정책). 선언이 없는 권한을 요청하면 곧바로 거부되고,
+  /// `deniedGuide`가 켜져 있으면 켤 수 없는 권한 때문에 설정 앱으로 보내게 된다.
+  photos,
+  notification;
+
+  /// [platform]에서 런타임에 요청할 수 있는 권한인지.
+  bool isRequestableOn(TargetPlatform platform) => switch (this) {
+    photos => platform != TargetPlatform.android,
+    _ => true,
+  };
+}
 
 @immutable
 class PermissionsConfig {
@@ -407,8 +429,17 @@ class PermissionsConfig {
     : requestOnLaunch = r.choices('requestOnLaunch', AppPermission.values),
       deniedGuide = r.boolean('deniedGuide', true);
 
+  /// 설정에 적힌 그대로의 목록. 설정 파일은 플랫폼 공통이라 어떤 플랫폼에서는
+  /// 요청할 수 없는 권한이 섞여 있을 수 있다. 실제 요청에는 [requestOnLaunchOn]을 쓴다.
   final List<AppPermission> requestOnLaunch;
   final bool deniedGuide;
+
+  /// [platform]에서 앱 시작 시 실제로 요청할 권한.
+  /// 요청할 수 없는 권한(Android의 [AppPermission.photos])은 뺀다.
+  List<AppPermission> requestOnLaunchOn(TargetPlatform platform) =>
+      List.unmodifiable(
+        requestOnLaunch.where((p) => p.isRequestableOn(platform)),
+      );
 }
 
 // ---- network ----
