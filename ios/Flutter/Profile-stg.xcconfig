@@ -1,0 +1,4 @@
+// Profile-stg build configuration (#38). scheme `stg`가 이 configuration을 쓴다.
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile-stg.xcconfig"
+#include "Generated.xcconfig"
+#include "AppInfo-stg.xcconfig"

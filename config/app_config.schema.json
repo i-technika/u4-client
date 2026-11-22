@@ -18,7 +18,7 @@
       "required": ["name", "startUrl", "allowedHosts"],
       "properties": {
         "name": {
-          "description": "앱 이름. Alert 시리즈 다이얼로그 제목으로도 쓴다. Android 런처 이름(android:label)은 빌드 시 이 값을 읽는다(@·?로 시작, 백슬래시, ${ 포함, 글자·숫자 없음은 빌드 실패). iOS 홈 화면 이름은 ios/Flutter/AppInfo.xcconfig에 prod 값을 따로 적는다(docs/phase-1-setup.md 2장).",
+          "description": "앱 이름. Alert 시리즈 다이얼로그 제목으로도 쓴다. Android 런처 이름(android:label)은 빌드 시 이 값을 읽는다(@·?로 시작, 백슬래시, ${ 포함, 글자·숫자 없음은 빌드 실패). iOS 홈 화면 이름은 ios/Flutter/AppInfo-<flavor>.xcconfig에 같은 값을 따로 적는다(docs/phase-1-setup.md 2장).",
           "type": "string",
           "minLength": 1
         },

@@ -196,16 +196,16 @@ enum Flavor {
 
   /// 현재 빌드의 flavor.
   ///
-  /// Android는 `--flavor`(appFlavor), iOS는 아직 Xcode scheme이 없으므로
-  /// `--dart-define=FLAVOR=`로 정한다. release 빌드에서 둘 다 없으면 실패한다.
+  /// Android(`productFlavors`)와 iOS(scheme `dev`/`stg`/`prod`) 모두 `--flavor`로 정하고,
+  /// Flutter가 그 값을 [appFlavor]로 넘긴다 (#38). release 빌드에서 flavor가 없으면 실패한다.
+  ///
+  /// 예전 iOS용 `--dart-define=FLAVOR=`는 더 읽지 않는다. 남겨 두면 `--flavor`(bundle ID·앱 이름)와
+  /// 다른 flavor 설정을 읽는 빌드를 만들 수 있다.
   static Flavor get current {
-    const defined = String.fromEnvironment('FLAVOR');
-    final name = appFlavor ?? (defined.isEmpty ? null : defined);
+    final name = appFlavor;
     if (name == null) {
       if (kReleaseMode) {
-        throw const AppConfigException(
-          'release 빌드는 --flavor 또는 --dart-define=FLAVOR가 필요합니다',
-        );
+        throw const AppConfigException('release 빌드는 --flavor가 필요합니다');
       }
       return Flavor.dev;
     }

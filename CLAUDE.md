@@ -15,7 +15,8 @@
 - **네이티브 연동:** 웹 코드는 브라우저 표준 그대로 두고, 앱이 웹뷰 콜백이나 **표준 웹 API 폴리필**로 가로챈다. 앱 전용 기능은 `window.App.*` 네임스페이스와 `appready` 이벤트로 노출한다 (M3).
 - **메인 화면과 팝업은 같은 `AppWebView` 위젯**을 쓴다. Alert·GPS·파일 처리가 팝업 안에서도 똑같이 동작해야 한다.
 - **설정:** `config/app_config.<flavor>.json`(dev/stg/prod)을 `AppConfig`로 읽는다. 스키마는 `config/app_config.schema.json`.
-  - Android는 `productFlavors`(`--flavor dev|stg|prod`), iOS는 Xcode flavor가 아직 없어 `--dart-define=FLAVOR=`로 고른다.
+  - Android는 `productFlavors`, iOS는 Xcode scheme(`dev`/`stg`/`prod`)과 build configuration(`Debug-dev` 등)으로 나누고, 둘 다 `--flavor dev|stg|prod`로 고른다 (#38).
+  - iOS bundle ID·앱 이름은 `ios/Flutter/AppInfo-<flavor>.xcconfig`에 있다. 설정 JSON의 `app.name`이나 Android applicationId를 바꾸면 같이 고친다.
   - release 빌드는 flavor를 지정하지 않으면 시작하지 않는다.
 - 직접 의존성은 정확한 버전으로 고정하고, 올릴 때는 PR로 하나씩 올린다.
 

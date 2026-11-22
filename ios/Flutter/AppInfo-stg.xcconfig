@@ -1,0 +1,8 @@
+// stg flavor의 앱 정보 (#38). stg의 Debug·Release·Profile xcconfig가 포함한다.
+//
+// - PRODUCT_BUNDLE_IDENTIFIER: Android applicationId(+ applicationIdSuffix)와 같게 둔다.
+//   flavor마다 달라야 세 flavor를 한 기기에 함께 설치할 수 있다.
+// - APP_DISPLAY_NAME: Info.plist의 CFBundleDisplayName이 참조한다. 기준은 config/app_config.stg.json의 app.name이다.
+//   Xcode는 빌드 시 JSON을 읽지 않으므로 손으로 적고, test/app_display_name_test.dart가 어긋남을 잡는다.
+PRODUCT_BUNDLE_IDENTIFIER = com.itechnika.u4.stg
+APP_DISPLAY_NAME = U4 STG

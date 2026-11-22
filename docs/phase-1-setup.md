@@ -63,14 +63,15 @@
 | | dev | stg | prod |
 |---|---|---|---|
 | Android applicationId | `com.itechnika.u4.dev` | `com.itechnika.u4.stg` | `com.itechnika.u4` |
-| 설정 `app.name`, Android 앱 이름 | U4 DEV | U4 STG | U4 |
-| iOS 앱 이름 | U4 | U4 | U4 |
+| iOS bundle ID | `com.itechnika.u4.dev` | `com.itechnika.u4.stg` | `com.itechnika.u4` |
+| 설정 `app.name`, Android·iOS 앱 이름 | U4 DEV | U4 STG | U4 |
+| iOS scheme / build configuration | `dev` / `Debug-dev`·`Release-dev`·`Profile-dev` | `stg` / `*-stg` | `prod` / `*-prod` |
 | versionName | `pubspec.yaml`의 `version`과 같음 | 같음 | 같음 |
 | 설정 파일 | `config/app_config.dev.json` | `config/app_config.stg.json` | `config/app_config.prod.json` |
 | HTTP(cleartext) | 허용 | 차단 | 차단 |
 
 - 앱 ID와 앱 이름은 임시값이다(0단계 문서 5장 "확인이 필요한 사항").
-- Android는 `productFlavors`로 나눠, 세 flavor를 한 기기에 함께 설치할 수 있다.
+- Android는 `productFlavors`, iOS는 scheme과 build configuration으로 나눠, 세 flavor를 한 기기에 함께 설치할 수 있다.
 - versionName은 flavor와 플랫폼에 관계없이 같다(예: `1.0.0`). Android flavor에 `versionNameSuffix`(`-dev` 등)를 두지 않는다.
   - `userAgentSuffix`의 `{version}`이 Android와 iOS에서 같아야 한다.
   - `extras.forceUpdate`는 semver로 비교하는데, `1.0.0-dev`는 pre-release라 `1.0.0`보다 낮게 취급되어 업데이트가 강제될 수 있다.
@@ -79,19 +80,25 @@
   - Android: `build.gradle.kts`가 빌드 시 `config/app_config.<flavor>.json`을 읽어 `manifestPlaceholders["appName"]`(매니페스트 `android:label`)에 넣는다. JSON만 고치면 된다.
     - `android:label`로 그대로 쓸 수 없는 이름은 빌드가 실패한다: 빈 이름, 앞 공백을 빼고 `@`·`?`로 시작(aapt가 리소스 참조로 해석), `\`(aapt 이스케이프), `${`(매니페스트 placeholder), 글자·숫자가 하나도 없는 이름.
     - 설정 단계에서 세 flavor 파일을 모두 읽으므로, 한 flavor 파일이 없거나 깨져도 모든 flavor 빌드가 실패한다. 오류에는 파일 경로가 붙는다.
-  - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo.xcconfig`(Debug·Release xcconfig가 포함)에 손으로 적는다. 아래 "iOS flavor는 아직 없다" 때문에 flavor와 관계없이 prod 이름(U4)이 표시된다. **prod `app.name`을 바꾸면 `AppInfo.xcconfig`도 같이 고친다.**
+  - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo-<flavor>.xcconfig`에 손으로 적는다(아래 "iOS flavor"). Xcode는 빌드 시 JSON을 읽지 않으므로 **`app.name`을 바꾸면 그 flavor의 `AppInfo-<flavor>.xcconfig`도 같이 고친다.**
   - `test/app_display_name_test.dart`가 연결이 끊기는 경우를 잡는다.
     - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 빌드한 APK로 확인한다(`aapt2 dump badging`의 `application-label`). CI 자동 비교는 #39에서 추가한다.
-    - iOS: `AppInfo.xcconfig` 값이 prod `app.name`과 같은지, Debug·Release xcconfig, Xcode 프로젝트, 지역화 `InfoPlist.strings`가 이름을 덮어쓰지 않는지.
+    - iOS: `AppInfo-<flavor>.xcconfig`의 이름이 그 flavor의 `app.name`과, bundle ID가 Android applicationId와 같은지, build configuration·scheme이 다른 flavor의 xcconfig를 쓰지 않는지, configuration xcconfig·Xcode 프로젝트·지역화 `InfoPlist.strings`가 값을 덮어쓰지 않는지.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
-- 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
+- 실행 시 flavor는 `Flavor.current`가 정한다. Android·iOS 모두 `--flavor` 값을 Flutter가 넘겨 주는 `appFlavor`로 읽고, release 빌드에서 없으면 시작하지 않는다. 예전 iOS용 `--dart-define=FLAVOR=`는 #38에서 없앴다(bundle ID와 다른 flavor 설정을 읽는 빌드를 막기 위해).
 - 세 설정 파일은 모두 asset으로 번들된다. 비밀 값이 없어서 그렇게 했지만, 설정에 민감한 값이 들어가게 되면 flavor별 asset으로 나눠야 한다.
 
-### iOS flavor는 아직 없다
+### iOS flavor (#38)
 
-iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define`으로만 고른다. flavor별 bundle ID와 앱 이름을 주려면 Xcode에서 build configuration(`Debug-dev` 등)과 scheme을 만들어야 하는데, Windows에서는 Xcode 프로젝트를 안전하게 수정할 수 없어 macOS 환경에서 이어서 한다.
+Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 = `<모드>-<flavor>`)을 따른다. macOS에서 만들었다.
 
-flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME`을 그 flavor의 `app.name`으로 덮어쓴다. 그때 `test/app_display_name_test.dart`의 "덮어쓰지 않는다" 검사를 flavor별 xcconfig 값이 그 flavor의 `app.name`과 같은지 보는 검사로 바꾼다. 이 작업은 #38에서 한다.
+- scheme `dev`·`stg`·`prod`만 있다. flavor 없는 `Runner` scheme은 지웠으므로 `--flavor` 없이 iOS를 빌드할 수 없다(Android와 같다).
+- build configuration은 `Debug`·`Release`·`Profile` × flavor 9개다. 프로젝트·Runner·RunnerTests 모두 같은 9개를 가진다.
+- xcconfig 구성 (`ios/Flutter/`):
+  - `<모드>-<flavor>.xcconfig`: Runner의 각 configuration이 쓴다. 그 configuration의 Pods xcconfig, `Generated.xcconfig`, `AppInfo-<flavor>.xcconfig`를 포함만 한다.
+  - `AppInfo-<flavor>.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER`와 `APP_DISPLAY_NAME`. Xcode 프로젝트(`project.pbxproj`)는 Runner의 bundle ID를 정하지 않는다.
+- `ios/Podfile`의 `project` 매핑에 9개 configuration을 모두 적는다. 새 configuration을 만들면 같이 고친다.
+- Xcode에서 scheme이나 configuration을 추가·복제하면 `test/app_display_name_test.dart`가 목록·xcconfig 연결이 어긋난 것을 잡는다.
 
 ## 3. Android 설정
 
@@ -127,6 +134,8 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
   - `LSApplicationQueriesSchemes`: `tel`, `sms`, `mailto`.
   - `NSAllowsLocalNetworking`: 로컬 테스트 페이지용. App Store 심사에서 허용되는 예외다.
 - **macOS에서 처음 빌드할 때:** `flutter build ios`를 실행하면 `pod install`과 SwiftPM 해석이 이어서 진행된다. 이때 생기는 `ios/Podfile.lock`을 커밋한다.
+  - #38에서 처음 macOS로 빌드해 `Podfile.lock`, CocoaPods 연동(`project.pbxproj`, `Runner.xcworkspace`), SwiftPM `Package.resolved`를 커밋했다.
+  - Flutter 3.50.0 기준으로 iOS 플러그인이 모두 Swift Package로 연결되어 CocoaPods로는 `Flutter` pod만 설치된다. Flutter는 CocoaPods 연동을 없애도 된다고 안내한다.
 
 ## 5. 앱 코드
 
@@ -162,7 +171,8 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |
 | 병합된 prod 매니페스트 | 권한 8개(+ AndroidX 내부 권한), minSdk 28, targetSdk 36 |
-| iOS 빌드·실행 | **미확인** (Windows 환경. macOS에서 확인 필요) |
+| iOS 시뮬레이터(iPhone 17) dev·stg·prod 빌드·실행 (#38) | 세 flavor 함께 설치, 홈 화면 이름 U4 DEV·U4 STG·U4, 설정 확인 화면의 flavor 정상 |
+| iOS 실기기 실행 | **미확인** |
 | Android 실기기 실행 | **미확인** (에뮬레이터로만 확인) |
 
-완료 기준 "양쪽 실기기에서 실행"은 iOS 빌드와 실기기 확인이 남아 있다.
+완료 기준 "양쪽 실기기에서 실행"은 iOS 실기기 확인이 남아 있다.

@@ -113,6 +113,7 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # iOS는 Xcode flavor가 아직 없어 dart-define으로 고른다 (docs/phase-1-setup.md 2장).
+      # iOS도 scheme(dev/stg/prod)으로 flavor를 고른다 (#38, docs/phase-1-setup.md 2장).
+      # flavor별 xcconfig·scheme 구성은 test/app_display_name_test.dart가 검사하므로 prod만 빌드한다.
       - name: Build iOS (No CodeSign, prod)
-        run: flutter build ios --release --no-codesign --dart-define=FLAVOR=prod
+        run: flutter build ios --release --no-codesign --flavor prod

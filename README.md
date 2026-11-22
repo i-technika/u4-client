@@ -50,16 +50,13 @@ milestone.md 마일스톤 체크리스트
 ```sh
 flutter pub get
 
-# Android: --flavor로 고른다
+# Android·iOS 모두 --flavor로 고른다 (iOS는 Xcode scheme dev/stg/prod)
 flutter run --flavor dev
 flutter build apk --release --flavor prod
-
-# iOS: Xcode flavor가 아직 없어 dart-define으로 고른다 (docs/phase-1-setup.md 2장)
-flutter run --dart-define=FLAVOR=dev
-flutter build ios --release --dart-define=FLAVOR=prod
+flutter build ios --release --flavor prod
 ```
 
-release 빌드는 flavor를 지정하지 않으면 시작하지 않습니다.
+release 빌드는 flavor를 지정하지 않으면 시작하지 않습니다. iOS는 flavor 없는 scheme이 없어 `--flavor` 없이 빌드할 수 없습니다.
 
 ```sh
 flutter analyze
