@@ -6,38 +6,51 @@ import 'package:u4/config/app_config.dart';
 
 import 'helpers.dart';
 
-/// 앱 표시 이름(런처·홈 화면)의 원본이 설정 JSON의 `app.name` 한 곳인지 검사한다 (#9).
+/// 앱 표시 이름(런처·홈 화면)이 설정 JSON의 `app.name`과 어긋나지 않는지 검사한다 (#9).
 ///
 /// - Android: `android/app/build.gradle.kts`가 빌드 시 flavor별 JSON을 읽는다.
-/// - iOS: Xcode flavor가 아직 없어 `ios/Flutter/AppInfo.xcconfig`에 prod 이름을 적고,
+///   여기서는 그 경로가 끊기지 않았는지(매니페스트·Gradle)를 본다.
+/// - iOS: Xcode flavor가 아직 없어 `ios/Flutter/AppInfo.xcconfig`에 prod 이름을 손으로 적고,
 ///   Info.plist는 `$(APP_DISPLAY_NAME)`을 참조한다. 이 값이 JSON과 어긋나면 실패한다.
 void main() {
   String appNameOf(Flavor flavor) =>
       (readConfigJson(flavor)['app'] as Map<String, Object?>)['name'] as String;
 
   group('Android', () {
-    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+    test('모든 매니페스트의 android:label은 \${appName}뿐이다', () {
+      final manifests = Directory('android/app/src')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('AndroidManifest.xml'));
+      final labels = [
+        for (final f in manifests)
+          ...RegExp(r'android:label="([^"]*)"')
+              .allMatches(f.readAsStringSync())
+              .map((m) => m.group(1)),
+      ];
+      expect(labels, [r'${appName}']);
+    });
 
-    test('build.gradle.kts에 앱 이름을 직접 적지 않는다', () {
+    test('build.gradle.kts는 appName을 JSON에서 읽은 값으로 한 번만 넣는다', () {
+      final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+      // put("appName", ...), mapOf("appName" to ...), buildType 쪽 placeholder도 함께 막는다.
+      expect('"appName"'.allMatches(gradle), hasLength(1));
       expect(
         gradle,
-        isNot(
-          matches(RegExp(r'''manifestPlaceholders\["appName"\]\s*=\s*"''')),
-        ),
-      );
-      expect(
-        gradle,
-        contains('manifestPlaceholders["appName"] = appNameOf(name)'),
+        matches(RegExp(r'manifestPlaceholders\["appName"\]\s*=\s*appNameOf\(')),
       );
     });
 
     for (final flavor in Flavor.values) {
       test('${flavor.name}의 app.name을 android:label로 쓸 수 있다', () {
+        // build.gradle.kts의 appNameOf와 같은 규칙이다.
         final name = appNameOf(flavor);
-        expect(name.trim(), isNotEmpty);
-        // @ 또는 ?로 시작하면 aapt가 리소스 참조로 해석한다. Gradle도 같은 검사를 한다.
-        expect(name, isNot(startsWith('@')));
-        expect(name, isNot(startsWith('?')));
+        final trimmed = name.trim();
+        expect(trimmed, isNot(startsWith('@')));
+        expect(trimmed, isNot(startsWith('?')));
+        expect(name, isNot(contains(r'\')));
+        expect(name, isNot(contains(r'${')));
+        expect(name, contains(RegExp(r'[\p{L}\p{N}]', unicode: true)));
       });
     }
   });
@@ -58,13 +71,23 @@ void main() {
     });
 
     for (final config in ['Debug', 'Release']) {
-      test('$config.xcconfig가 AppInfo.xcconfig를 포함한다', () {
-        final lines = File('ios/Flutter/$config.xcconfig')
-            .readAsLinesSync()
-            .map((l) => l.trim());
+      test('$config.xcconfig는 AppInfo.xcconfig를 포함하고 값을 덮어쓰지 않는다', () {
+        final path = 'ios/Flutter/$config.xcconfig';
+        final lines = File(path).readAsLinesSync().map((l) => l.trim());
         expect(lines, contains('#include "AppInfo.xcconfig"'));
+        // APP_DISPLAY_NAME[sdk=...] 같은 조건부 정의도 막는다.
+        final definitions = lines
+            .map((l) => l.split('//').first.trim())
+            .where((l) => l.startsWith('APP_DISPLAY_NAME'));
+        expect(definitions, isEmpty);
       });
     }
+
+    test('Xcode 프로젝트 설정이 APP_DISPLAY_NAME을 덮어쓰지 않는다', () {
+      final pbxproj = File('ios/Runner.xcodeproj/project.pbxproj')
+          .readAsStringSync();
+      expect(pbxproj, isNot(contains('APP_DISPLAY_NAME')));
+    });
   });
 }
 

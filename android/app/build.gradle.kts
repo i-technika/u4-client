@@ -9,22 +9,39 @@ plugins {
 /**
  * config/app_config.<flavor>.json의 app.name을 읽는다 (#9).
  *
- * 앱 표시 이름의 원본은 설정 JSON 한 곳이다. 여기에 이름을 따로 적지 않는다.
+ * Android 런처 이름의 원본은 설정 JSON이다. 여기에 이름을 따로 적지 않는다.
  * providers.fileContents로 읽어 JSON을 고치면 Gradle이 설정 단계를 다시 실행한다.
+ * 설정 단계에서 세 flavor를 모두 읽으므로, 한 flavor 파일이 깨져도 모든 빌드가 실패한다.
  */
 fun appNameOf(flavor: String): String {
     val file = layout.projectDirectory.file("../../config/app_config.$flavor.json")
     val path = file.asFile.path
     val text = providers.fileContents(file).asText.orNull
         ?: throw GradleException("$path 파일이 없습니다")
-    val root = JsonSlurper().parseText(text) as? Map<*, *>
+    val root = try {
+        JsonSlurper().parseText(text) as? Map<*, *>
+    } catch (e: Exception) {
+        throw GradleException("$path: JSON을 읽을 수 없습니다 (${e.message})", e)
+    }
     val name = (root?.get("app") as? Map<*, *>)?.get("name") as? String
     if (name.isNullOrBlank()) {
         throw GradleException("$path: app.name이 없거나 비어 있습니다")
     }
-    // android:label 값이 @ 또는 ?로 시작하면 aapt가 리소스 참조로 해석한다.
-    if (name.startsWith("@") || name.startsWith("?")) {
-        throw GradleException("$path: app.name은 @ 또는 ?로 시작할 수 없습니다 (\"$name\")")
+    // android:label 값으로 그대로 쓸 수 없는 이름은 막는다. 런처 이름이 Dart 쪽 이름과 달라진다.
+    // - @·?로 시작: aapt가 리소스 참조로 해석한다 (앞 공백은 무시된다).
+    // - \: aapt가 이스케이프로 해석해 글자가 사라지거나 바뀐다.
+    // - ${: 매니페스트 병합기가 placeholder로 다시 치환한다.
+    // - 글자·숫자가 하나도 없음: 폭 없는 공백 등으로 런처 이름이 빈 칸이 된다.
+    val trimmed = name.trim()
+    val problem = when {
+        trimmed.startsWith("@") || trimmed.startsWith("?") -> "@ 또는 ?로 시작할 수 없습니다"
+        name.contains("\\") -> "\\를 쓸 수 없습니다"
+        name.contains("\${") -> "\${를 쓸 수 없습니다"
+        name.none { it.isLetterOrDigit() } -> "글자나 숫자가 하나 이상 있어야 합니다"
+        else -> null
+    }
+    if (problem != null) {
+        throw GradleException("$path: app.name은 $problem (\"$name\")")
     }
     return name
 }
