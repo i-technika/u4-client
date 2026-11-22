@@ -1,7 +1,32 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+/**
+ * config/app_config.<flavor>.json의 app.name을 읽는다 (#9).
+ *
+ * 앱 표시 이름의 원본은 설정 JSON 한 곳이다. 여기에 이름을 따로 적지 않는다.
+ * providers.fileContents로 읽어 JSON을 고치면 Gradle이 설정 단계를 다시 실행한다.
+ */
+fun appNameOf(flavor: String): String {
+    val file = layout.projectDirectory.file("../../config/app_config.$flavor.json")
+    val path = file.asFile.path
+    val text = providers.fileContents(file).asText.orNull
+        ?: throw GradleException("$path 파일이 없습니다")
+    val root = JsonSlurper().parseText(text) as? Map<*, *>
+    val name = (root?.get("app") as? Map<*, *>)?.get("name") as? String
+    if (name.isNullOrBlank()) {
+        throw GradleException("$path: app.name이 없거나 비어 있습니다")
+    }
+    // android:label 값이 @ 또는 ?로 시작하면 aapt가 리소스 참조로 해석한다.
+    if (name.startsWith("@") || name.startsWith("?")) {
+        throw GradleException("$path: app.name은 @ 또는 ?로 시작할 수 없습니다 (\"$name\")")
+    }
+    return name
 }
 
 android {
@@ -33,22 +58,23 @@ android {
     // versionNameSuffix는 일부러 두지 않는다. versionName을 flavor·플랫폼(iOS)과 같게 유지해야
     // userAgentSuffix의 {version}이 같고, extras.forceUpdate의 semver 비교에서
     // "1.0.0-dev"가 pre-release로 취급되어 업데이트가 강제되는 일이 없다. 환경은 ID와 앱 이름으로 구분한다.
+    // 런처 이름(AndroidManifest.xml의 ${appName})은 flavor 설정 JSON의 app.name을 쓴다.
     flavorDimensions += "env"
     productFlavors {
         create("dev") {
             dimension = "env"
             applicationIdSuffix = ".dev"
-            manifestPlaceholders["appName"] = "U4 DEV"
         }
         create("stg") {
             dimension = "env"
             applicationIdSuffix = ".stg"
-            manifestPlaceholders["appName"] = "U4 STG"
         }
         create("prod") {
             dimension = "env"
-            manifestPlaceholders["appName"] = "U4"
         }
+    }
+    productFlavors.configureEach {
+        manifestPlaceholders["appName"] = appNameOf(name)
     }
 
     buildTypes {

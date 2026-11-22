@@ -1,0 +1,7 @@
+// 앱 표시 이름 (#9). Info.plist의 CFBundleDisplayName이 이 값을 참조한다.
+//
+// 원본은 config/app_config.<flavor>.json의 app.name이다. iOS는 아직 Xcode flavor가 없어
+// bundle ID가 prod와 같으므로 prod 이름을 쓴다. test/app_display_name_test.dart가
+// 이 값이 config/app_config.prod.json의 app.name과 같은지 검사한다.
+// iOS flavor(build configuration·scheme)를 만들면 flavor별 xcconfig에서 이 값을 덮어쓴다.
+APP_DISPLAY_NAME = U4
