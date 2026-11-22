@@ -194,30 +194,42 @@ enum Flavor {
 
   String get assetPath => 'config/app_config.$name.json';
 
-  /// 현재 빌드의 flavor.
+  /// 현재 빌드의 flavor. 판정 규칙은 [resolve]에 있다.
+  static Flavor get current => resolve(
+    appFlavor: appFlavor,
+    legacyDefine: const String.fromEnvironment('FLAVOR'),
+    isRelease: kReleaseMode,
+  );
+
+  /// [appFlavor]와 예전 `--dart-define=FLAVOR=` 값([legacyDefine])으로 flavor를 정한다.
   ///
-  /// Android(`productFlavors`)와 iOS(scheme `dev`/`stg`/`prod`) 모두 `--flavor`로 정하고,
-  /// Flutter가 그 값을 [appFlavor]로 넘긴다 (#38). release 빌드에서 flavor가 없으면 실패한다.
-  ///
-  /// 예전 iOS용 `--dart-define=FLAVOR=`는 더 쓰지 않는다. 남겨 두면 `--flavor`(bundle ID·앱 이름)와
-  /// 다른 flavor 설정을 읽는 빌드를 만들 수 있다. 습관대로 넘기면 조용히 무시하지 않고 실패한다.
-  static Flavor get current {
-    const legacy = String.fromEnvironment('FLAVOR');
-    if (legacy.isNotEmpty) {
-      throw const AppConfigException(
-        '--dart-define=FLAVOR=$legacy는 더 쓰지 않습니다. --flavor $legacy를 쓰세요',
+  /// - Android(`productFlavors`)와 iOS(scheme `dev`/`stg`/`prod`) 모두 `--flavor`로 정하고,
+  ///   Flutter가 그 값을 `appFlavor`로 넘긴다 (#38).
+  /// - flavor가 없으면 release는 실패하고, debug·profile은 dev를 쓴다.
+  /// - 예전 iOS용 `--dart-define=FLAVOR`는 더 읽지 않는다. 값이 `--flavor`와 같으면 무시하고,
+  ///   다르면(또는 `--flavor` 없이 넘기면) 실패한다. 조용히 무시하면 의도와 다른 flavor 설정으로 뜨고,
+  ///   그 값을 따르면 bundle ID·앱 이름과 다른 flavor 설정을 읽는 빌드가 된다.
+  @visibleForTesting
+  static Flavor resolve({
+    required String? appFlavor,
+    required String legacyDefine,
+    required bool isRelease,
+  }) {
+    if (legacyDefine.isNotEmpty && legacyDefine != appFlavor) {
+      throw AppConfigException(
+        '--dart-define=FLAVOR=$legacyDefine는 더 쓰지 않습니다. '
+        '--flavor $legacyDefine로 빌드하세요 (지금 --flavor: ${appFlavor ?? '없음'})',
       );
     }
-    final name = appFlavor;
-    if (name == null) {
-      if (kReleaseMode) {
+    if (appFlavor == null) {
+      if (isRelease) {
         throw const AppConfigException('release 빌드는 --flavor가 필요합니다');
       }
       return Flavor.dev;
     }
     return Flavor.values.firstWhere(
-      (f) => f.name == name,
-      orElse: () => throw AppConfigException('알 수 없는 flavor: $name'),
+      (f) => f.name == appFlavor,
+      orElse: () => throw AppConfigException('알 수 없는 flavor: $appFlavor'),
     );
   }
 }

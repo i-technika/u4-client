@@ -191,11 +191,16 @@ void main() {
         expect(pbxproj, isNot(contains('APP_DISPLAY_NAME')));
         // RunnerTests의 bundle ID만 남는다. Xcode가 쓰는 조건부 키
         // ("PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = ...)도 함께 센다.
-        final ids = RegExp(r'"?PRODUCT_BUNDLE_IDENTIFIER[^=]*=\s*([^;]+);')
-            .allMatches(pbxproj)
-            .map((m) => m[1]!.trim());
-        expect(ids, hasLength(9)); // RunnerTests configuration 9개
-        expect(ids, everyElement('com.itechnika.u4.RunnerTests'));
+        final settings = RegExp(
+          r'"?PRODUCT_BUNDLE_IDENTIFIER(\[[^\]]*\])?"?\s*=\s*([^;]+);',
+        ).allMatches(pbxproj).toList();
+        // 기기·시뮬레이터 SDK별 조건부 값은 두지 않는다.
+        expect(settings.map((m) => m[1]).nonNulls, isEmpty);
+        expect(settings, hasLength(9)); // RunnerTests configuration 9개
+        expect(
+          settings.map((m) => m[2]!.trim()),
+          everyElement('com.itechnika.u4.RunnerTests'),
+        );
       });
     });
 

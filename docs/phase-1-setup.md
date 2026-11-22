@@ -87,6 +87,8 @@
     - iOS: `AppInfo-<flavor>.xcconfig`의 이름이 그 flavor의 `app.name`과, bundle ID가 Android applicationId와 같은지, build configuration·scheme이 다른 flavor의 xcconfig를 쓰지 않는지, configuration xcconfig·Xcode 프로젝트·지역화 `InfoPlist.strings`가 값을 덮어쓰지 않는지.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
 - 실행 시 flavor는 `Flavor.current`가 정한다. Android·iOS 모두 `--flavor` 값을 Flutter가 넘겨 주는 `appFlavor`로 읽고, release 빌드에서 없으면 시작하지 않는다. 예전 iOS용 `--dart-define=FLAVOR=`는 #38에서 없앴다(bundle ID와 다른 flavor 설정을 읽는 빌드를 막기 위해).
+  - 값이 `--flavor`와 같으면 무시한다. 다르거나 `--flavor` 없이 넘기면 빌드는 되지만 앱이 설정 오류 화면(`ConfigErrorApp`)으로 시작한다. 빌드·배포 스크립트에 남아 있으면 지운다.
+  - 판정 규칙은 `Flavor.resolve`에 있고 `test/flavor_test.dart`가 확인한다.
 - 세 설정 파일은 모두 asset으로 번들된다. 비밀 값이 없어서 그렇게 했지만, 설정에 민감한 값이 들어가게 되면 flavor별 asset으로 나눠야 한다.
 
 ### iOS flavor (#38)
@@ -100,7 +102,7 @@ Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 
   - `AppInfo-<flavor>.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER`와 `APP_DISPLAY_NAME`. Xcode 프로젝트(`project.pbxproj`)는 Runner의 bundle ID를 정하지 않는다.
 - `ios/Podfile`의 `project` 매핑에 9개 configuration을 모두 적는다. 새 configuration을 만들면 같이 고친다.
 - Xcode에서 scheme이나 configuration을 추가·복제하면 `test/app_display_name_test.dart`가 목록·xcconfig 연결이 어긋난 것을 잡는다.
-- 파일 검사로 못 잡는 덮어쓰기(Signing 탭에서 bundle ID 수정 등)는 `tool/check_ios_flavors.sh`가 `xcodebuild -showBuildSettings`의 최종 값으로 잡는다. Milestone Full CI의 iOS job이 실행한다.
+- `tool/check_ios_flavors.sh`는 9개 configuration(기기·시뮬레이터 SDK 각각)과 3개 scheme에서 `xcodebuild -showBuildSettings`가 계산한 최종 bundle ID·앱 이름·configuration을 `AppInfo-<flavor>.xcconfig`와 비교한다. 위 테스트는 파일 텍스트를 보므로, 다른 xcconfig나 SDK 조건을 거쳐 값이 바뀌는 경우는 이 스크립트가 잡는다. Milestone Full CI의 iOS job이 실행한다.
 - 실기기 설치용 서명(Team, flavor별 App ID·프로비저닝)은 아직 정하지 않았다. M1 종료 전 실기기 점검(#16) 때 정한다.
 
 ## 3. Android 설정
@@ -127,7 +129,7 @@ Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 
 ## 4. iOS 설정
 
 - **최소 버전 iOS 16** (`IPHONEOS_DEPLOYMENT_TARGET`, Podfile `platform`).
-- **플러그인 연결:** 기본은 Swift Package Manager다. `flutter_inappwebview_ios`처럼 SwiftPM을 지원하지 않는 플러그인만 CocoaPods로 설치되므로 `ios/Podfile`을 미리 두었다.
+- **플러그인 연결:** 기본은 Swift Package Manager다. SwiftPM을 지원하지 않는 플러그인을 대비해 `ios/Podfile`을 두었지만, Flutter 3.50.0 기준으로 `flutter_inappwebview_ios`(1.2.0-beta.3)를 포함한 모든 플러그인이 SwiftPM으로 연결되어 CocoaPods로는 `Flutter` pod만 설치된다(#38에서 확인).
 - **`permission_handler` 권한 매크로:**
   - SwiftPM으로 설치되면 Info.plist의 `NS*UsageDescription` 키를 보고 자동으로 켠다.
   - CocoaPods로 설치될 때를 대비해 Podfile `post_install`에도 같은 목록(위치, 카메라, 마이크, 사진, 알림)을 넣었다. 두 목록은 같게 유지한다.

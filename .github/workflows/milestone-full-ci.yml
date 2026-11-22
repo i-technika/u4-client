@@ -121,4 +121,5 @@ jobs:
       # iOS도 scheme(dev/stg/prod)으로 flavor를 고른다 (#38, docs/phase-1-setup.md 2장).
       # flavor별 값은 위 단계가 확인하므로 실제 빌드는 prod만 한다.
       - name: Build iOS (No CodeSign, prod)
+        if: ${{ !cancelled() }}
         run: flutter build ios --release --no-codesign --flavor prod
