@@ -106,15 +106,14 @@ void main() {
       });
 
       for (final mode in modes) {
-        test('$mode-$f.xcconfig는 Pods·Generated·$f AppInfo만 이 순서로 포함한다', () {
+        test('$mode-$f.xcconfig는 Generated·$f AppInfo만 이 순서로 포함한다', () {
           // 값을 직접 정하지 않는다(조건부 키 포함). AppInfo를 마지막에 두어 앞의 설정이 덮지 못하게 한다.
+          // CocoaPods를 쓰지 않으므로 Pods xcconfig도 포함하지 않는다 (#52).
           final lines = File('ios/Flutter/$mode-$f.xcconfig')
               .readAsLinesSync()
               .map((l) => l.split('//').first.trim())
               .where((l) => l.isNotEmpty);
           expect(lines, [
-            '#include? "Pods/Target Support Files/Pods-Runner/'
-                'Pods-Runner.${mode.toLowerCase()}-$f.xcconfig"',
             '#include "Generated.xcconfig"',
             '#include "AppInfo-$f.xcconfig"',
           ]);
@@ -200,6 +199,20 @@ void main() {
         expect(
           settings.map((m) => m[2]!.trim()),
           everyElement('com.itechnika.u4.RunnerTests'),
+        );
+      });
+
+      test('CocoaPods 연동이 없다 (플러그인은 모두 SwiftPM으로 연결, #52)', () {
+        // CocoaPods가 필요한 플러그인을 추가하면 Flutter가 Podfile을 만들고 pod install이
+        // 프로젝트에 Pods 설정을 다시 넣는다. 그때는 이 테스트와 docs/phase-1-setup.md 4장을 함께 고친다.
+        expect(File('ios/Podfile').existsSync(), isFalse);
+        expect(File('ios/Podfile.lock').existsSync(), isFalse);
+        expect(pbxproj, isNot(contains('Pods')));
+        expect(pbxproj, isNot(contains('[CP]')));
+        expect(
+          File('ios/Runner.xcworkspace/contents.xcworkspacedata')
+              .readAsStringSync(),
+          isNot(contains('Pods')),
         );
       });
     });
