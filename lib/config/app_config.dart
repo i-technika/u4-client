@@ -399,16 +399,66 @@ class DialogConfig {
 
 // ---- permissions ----
 
-enum AppPermission { location, camera, microphone, photos, notification }
+/// 설정에서 고를 수 있는 런타임 권한.
+///
+/// 플랫폼마다 요청할 수 있는 권한이 다르다. [isRequestableOn]으로 확인한다.
+enum AppPermission {
+  location,
+  camera,
+  microphone,
+
+  /// 사진 보관함. iOS에서만 요청하고 Android에서는 건너뛴다.
+  ///
+  /// 웹 파일 업로드(`<input type=file>`)에는 두 플랫폼 모두 이 권한이 필요 없다.
+  /// Android 웹뷰는 시스템 파일 선택기(`ACTION_GET_CONTENT`)로 고르고 임시 URI 권한을 받으며,
+  /// iOS 웹뷰도 시스템 피커를 쓴다. iOS에서는 네이티브로 보관함을 직접 읽는 기능에만 쓴다.
+  ///
+  /// Android는 Play 사진·동영상 권한 정책 때문에 매니페스트에서 `READ_MEDIA_IMAGES`를
+  /// 제거했다. permission_handler는 매니페스트에 없는 권한을 다이얼로그 없이 항상
+  /// `denied`(영구 거부가 아님)로 돌려준다. 요청하면 기능이 늘 실패하고, 영구 거부가
+  /// 아니라 설정 앱 안내로도 이어지지 않는다.
+  /// Android 12(API 32) 이하는 permission_handler가 photos를 아예 지원하지 않아
+  /// 매니페스트와 상관없이 `denied`다. 이 버전에서 필요해지면 `READ_EXTERNAL_STORAGE`
+  /// (maxSdkVersion 32) 제거를 풀고 `storage`로 따로 매핑해야 한다.
+  photos,
+  notification;
+
+  /// 매니페스트·플러그인 제약 때문에 [platform]에서 이 권한 요청을 건너뛰어야 하면 false.
+  ///
+  /// 플랫폼 단위 판단이다. API 레벨에 따른 실제 상태(예: Android 12 이하의 알림)는
+  /// permission_handler가 돌려준다. [platform]에는 `defaultTargetPlatform`을 넘긴다.
+  /// 앱 대상이 아닌 플랫폼(linux, windows 등)의 값은 의미가 없다.
+  ///
+  /// 새 권한을 추가하면 플랫폼별 지원 여부를 정하도록 와일드카드 없이 모두 나열한다.
+  bool isRequestableOn(TargetPlatform platform) => switch (this) {
+    location || camera || microphone || notification => true,
+    photos => platform == TargetPlatform.iOS,
+  };
+}
 
 @immutable
 class PermissionsConfig {
   PermissionsConfig._(_Reader r)
-    : requestOnLaunch = r.choices('requestOnLaunch', AppPermission.values),
+    : _requestOnLaunch = r.choices('requestOnLaunch', AppPermission.values),
       deniedGuide = r.boolean('deniedGuide', true);
 
-  final List<AppPermission> requestOnLaunch;
+  /// 설정에 적힌 그대로의 목록. 설정 파일은 플랫폼 공통이라 어떤 플랫폼에서는
+  /// 요청할 수 없는 권한이 섞여 있을 수 있다. 잘못 쓰지 않도록 공개하지 않고
+  /// [requestOnLaunchOn]으로만 내보낸다.
+  final List<AppPermission> _requestOnLaunch;
+
+  /// 영구 거부(`isPermanentlyDenied`) 시 설정 앱 이동 안내.
   final bool deniedGuide;
+
+  /// [platform]에서 앱 시작 시 요청할 권한(설정 순서 유지, 수정 불가).
+  /// [AppPermission.isRequestableOn]이 false인 권한(Android의 [AppPermission.photos])은 뺀다.
+  /// [platform]에는 `defaultTargetPlatform`을 넘긴다.
+  ///
+  /// 기능을 쓸 때 요청하는 경로도 [AppPermission.isRequestableOn]을 먼저 확인한다.
+  List<AppPermission> requestOnLaunchOn(TargetPlatform platform) =>
+      List.unmodifiable(
+        _requestOnLaunch.where((p) => p.isRequestableOn(platform)),
+      );
 }
 
 // ---- network ----
