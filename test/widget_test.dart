@@ -96,6 +96,14 @@ void main() {
         _StringBundle(dev, '[]'),
         _configError('$dev: 최상위가 object가 아닙니다'),
       ),
+      '설정에 모르는 키가 있으면': (
+        Flavor.dev,
+        _StringBundle(
+          dev,
+          jsonEncode({...readConfigJson(Flavor.dev), 'typo': true}),
+        ),
+        _configError('$dev: 스키마에 없는 키: \$.typo'),
+      ),
     };
     cases.forEach((name, c) {
       final (flavor, bundle, matcher) = c;

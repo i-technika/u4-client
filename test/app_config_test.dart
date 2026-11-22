@@ -135,17 +135,21 @@ void main() {
   });
 
   group('모르는 키 (#4)', () {
+    /// 보고된 경로 목록이 정확히 [paths]인지 본다 (정상 키가 함께 보고되는 회귀 방지).
     Matcher unknownKeys(List<String> paths) => throwsA(
       isA<AppConfigException>().having(
         (e) => e.message,
         'message',
-        allOf([contains('스키마에 없는 키'), ...paths.map(contains)]),
+        '스키마에 없는 키: ${paths.join(', ')}',
       ),
     );
 
+    Map<String, Object?> sub(Map<String, Object?> json, String key) =>
+        json[key]! as Map<String, Object?>;
+
     test('prod 설정의 secureScreen 오타는 무시되지 않고 실패한다', () {
       final json = readConfigJson(Flavor.prod);
-      final network = json['network']! as Map<String, Object?>;
+      final network = sub(json, 'network');
       network['secureScren'] = network.remove('secureScreen');
       expect(
         () => AppConfig.fromJson(json),
@@ -153,31 +157,29 @@ void main() {
       );
     });
 
-    test('최상위와 깊은 object의 모르는 키를 경로와 함께 모두 알린다', () {
+    test('필수 키 오타는 "필요합니다"가 아니라 오타 위치를 알린다', () {
       final json = readConfigJson(Flavor.dev);
-      json['flavr'] = 'dev';
-      json['splash'] = {
-        'bgColor': {'lite': '#FFFFFF'},
-      };
-      json['network'] = {
-        'retry': {'maxAttemps': 1},
-      };
+      final app = sub(json, 'app');
+      app['startURL'] = app.remove('startUrl');
+      json['flavr'] = json.remove('flavor');
       expect(
         () => AppConfig.fromJson(json),
-        unknownKeys([
-          r'$.flavr',
-          r'$.splash.bgColor.lite',
-          r'$.network.retry.maxAttemps',
-        ]),
+        unknownKeys([r'$.app.startURL', r'$.flavr']),
       );
     });
 
-    test('값이 null인 모르는 키도 실패한다', () {
-      final json = readConfigJson(Flavor.dev)..['popups'] = null;
-      expect(() => AppConfig.fromJson(json), unknownKeys([r'$.popups']));
+    test('같은 설정의 타입·형식 오류보다 오타를 먼저 알린다', () {
+      final json = readConfigJson(Flavor.dev);
+      sub(json, 'popup')['maxDepth'] = '5';
+      sub(json, 'splash')['bgColor'] = {'light': 'white', 'drak': '#000000'};
+      sub(json, 'network')['secureScren'] = true;
+      expect(
+        () => AppConfig.fromJson(json),
+        unknownKeys([r'$.splash.bgColor.drak', r'$.network.secureScren']),
+      );
     });
 
-    test('다른 검증 오류보다 오타를 먼저 알린다', () {
+    test('강제 업데이트 checkUrl 오타는 checkUrl 누락보다 먼저 알린다', () {
       final json = readConfigJson(Flavor.dev);
       json['extras'] = {
         'forceUpdate': {'enabled': true, 'chekUrl': 'https://example.com/'},
@@ -188,6 +190,57 @@ void main() {
       );
     });
 
+    test('강제 업데이트를 켜고 checkUrl을 주면 읽는다', () {
+      final json = readConfigJson(Flavor.dev);
+      json['extras'] = {
+        'forceUpdate': {'enabled': true, 'checkUrl': 'https://example.com/v'},
+      };
+      final config = AppConfig.fromJson(json);
+      expect(config.extras.forceUpdate.enabled, isTrue);
+      expect(
+        config.extras.forceUpdate.checkUrl,
+        Uri.parse('https://example.com/v'),
+      );
+    });
+
+    test('생략한 object 안의 키도 검사한다', () {
+      final json = readConfigJson(Flavor.dev)
+        ..['dialog'] = {
+          'labels': {'okay': '확인'},
+        };
+      expect(
+        () => AppConfig.fromJson(json),
+        unknownKeys([r'$.dialog.labels.okay']),
+      );
+    });
+
+    test('값이 null인 모르는 키도 실패한다', () {
+      final json = readConfigJson(Flavor.dev)..['popups'] = null;
+      expect(() => AppConfig.fromJson(json), unknownKeys([r'$.popups']));
+    });
+
+    test('아는 키에 null을 적으면 기본값을 쓰지 않고 실패한다', () {
+      for (final (group, key) in [
+        ('network', 'secureScreen'),
+        (null, 'splash'),
+      ]) {
+        final json = readConfigJson(Flavor.prod);
+        (group == null ? json : sub(json, group))[key] = null;
+        final path = group == null ? '\$.$key' : '\$.$group.$key';
+        expect(
+          () => AppConfig.fromJson(json),
+          throwsA(
+            isA<AppConfigException>().having(
+              (e) => e.message,
+              'message',
+              startsWith('$path는 '),
+            ),
+          ),
+          reason: path,
+        );
+      }
+    });
+
     test(r'$schema 키는 허용하고 타입은 검사한다', () {
       final json = readConfigJson(Flavor.dev);
       expect(json[r'$schema'], isNotNull);
@@ -195,65 +248,62 @@ void main() {
       json[r'$schema'] = 1;
       expect(
         () => AppConfig.fromJson(json),
-        throwsA(isA<AppConfigException>()),
+        throwsA(
+          isA<AppConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains(r'$.$schema'),
+          ),
+        ),
       );
     });
 
-    test('스키마에 정의된 키는 모델이 모두 읽는다 (스키마와 모델 일치)', () {
+    test('모델이 읽는 키와 스키마의 키가 object마다 정확히 같다', () {
       final schema = jsonDecode(
         File('config/app_config.schema.json').readAsStringSync(),
       ) as Map<String, Object?>;
-      final full = _sampleOf(schema, schema)! as Map<String, Object?>;
-      // 샘플이 생략 없이 모든 그룹을 담았는지 확인한다.
-      expect(
-        full.keys.toSet(),
-        (schema['properties']! as Map<String, Object?>).keys.toSet(),
-      );
-      expect(() => AppConfig.fromJson(full), returnsNormally);
+      expect(AppConfig.knownKeys, equals(_schemaKeys(schema)));
+    });
+
+    test('config/의 설정 파일이 Flavor와 일치한다 (CI 스키마 검증 대상)', () {
+      final files = Directory('config')
+          .listSync()
+          .map((f) => f.uri.pathSegments.last)
+          .where((n) => n.startsWith('app_config.') && n.endsWith('.json'))
+          .where((n) => n != 'app_config.schema.json')
+          .map((n) => 'config/$n')
+          .toSet();
+      expect(files, Flavor.values.map((f) => f.assetPath).toSet());
     });
   });
 }
 
-/// 스키마 [s]의 모든 속성을 채운 유효한 샘플 값을 만든다.
+/// 스키마의 object 경로별 속성 이름 (예: `$.network` → `{secureScreen, ...}`).
 ///
-/// 이 프로젝트 스키마가 쓰는 키워드만 다룬다. `default`가 스칼라면 그 값을 쓴다.
-Object? _sampleOf(Map<String, Object?> s, Map<String, Object?> root) {
-  final ref = s[r'$ref'];
-  if (ref is String) {
+/// 모든 object가 `additionalProperties: false`인지도 확인한다. 로더는 모르는
+/// 키를 항상 거부하므로, 자유 키를 허용하는 object가 생기면 둘이 어긋난다.
+Map<String, Set<String>> _schemaKeys(Map<String, Object?> root) {
+  final defs = root[r'$defs']! as Map<String, Object?>;
+  Map<String, Object?> resolve(Map<String, Object?> s) {
+    final ref = s[r'$ref'];
+    if (ref is! String) return s;
     const prefix = r'#/$defs/';
     expect(ref, startsWith(prefix));
-    final name = ref.substring(prefix.length);
-    switch (name) {
-      case 'hostPattern':
-        return 'example.com';
-      case 'color':
-        return '#FFFFFF';
+    return resolve(defs[ref.substring(prefix.length)]! as Map<String, Object?>);
+  }
+
+  final out = <String, Set<String>>{};
+  void walk(Map<String, Object?> s, String path) {
+    s = resolve(s);
+    if (s['type'] != 'object') return;
+    expect(s['additionalProperties'], isFalse, reason: path);
+    final props = (s['properties'] ?? const {}) as Map<String, Object?>;
+    out[path] = props.keys.toSet();
+    for (final e in props.entries) {
+      walk(e.value! as Map<String, Object?>, '$path.${e.key}');
     }
-    final defs = root[r'$defs']! as Map<String, Object?>;
-    return _sampleOf(defs[name]! as Map<String, Object?>, root);
   }
-  final defaultValue = s['default'];
-  if (defaultValue != null && defaultValue is! Map && defaultValue is! List) {
-    return defaultValue;
-  }
-  if (s['const'] case final Object value) return value;
-  if (s['enum'] case final List<Object?> values) return values.first;
-  switch (s['type']) {
-    case 'object':
-      final props = (s['properties'] ?? const {}) as Map<String, Object?>;
-      return {
-        for (final e in props.entries)
-          e.key: _sampleOf(e.value! as Map<String, Object?>, root),
-      };
-    case 'array':
-      final items = s['items'] as Map<String, Object?>?;
-      return items == null ? const [] : [_sampleOf(items, root)];
-    case 'boolean':
-      return false;
-    case 'integer':
-      return s['minimum'] ?? 0;
-    case 'string':
-      return s['format'] == 'uri' ? 'https://example.com/' : 'x';
-  }
-  fail('샘플을 만들 수 없는 스키마: $s');
+
+  walk(root, r'$');
+  return out;
 }

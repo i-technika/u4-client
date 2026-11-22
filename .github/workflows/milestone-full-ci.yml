@@ -22,16 +22,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Sub-issue Linux CI와 같은 설정 스키마 검증 (#4)
+      # 설정 파일을 스키마로 검증한다 (#4). 내용은 tool/validate_config.sh 참고.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
       - name: Validate config JSON against schema
-        env:
-          CHECK_JSONSCHEMA: check-jsonschema==0.38.2
         run: |
-          pipx run --spec "$CHECK_JSONSCHEMA" check-jsonschema \
-            --check-metaschema config/app_config.schema.json
-          pipx run --spec "$CHECK_JSONSCHEMA" check-jsonschema \
-            --schemafile config/app_config.schema.json \
-            config/app_config.dev.json config/app_config.stg.json config/app_config.prod.json
+          python -m pip install -r tool/requirements-ci.txt
+          bash tool/validate_config.sh
 
       - name: Read Flutter version (.fvmrc)
         id: fvm

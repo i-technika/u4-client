@@ -114,8 +114,12 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - `lib/config/app_config.dart`: 0단계 스키마를 그대로 옮긴 불변 모델이다.
   - 생략한 값은 스키마 기본값으로 채운다.
   - 모르는 enum 값이나 틀린 타입은 JSON 경로와 함께 시작 시 바로 실패한다.
-  - 스키마에 없는 키(오타 포함)도 경로를 모두 모아 실패한다(#4). 오타 난 키가 조용히 무시되어 기본값이 쓰이는 것을 막는다. 그래서 모델은 스키마의 모든 키를 조건 없이 읽어야 하고, 스키마에 키를 추가하면 모델도 함께 고쳐야 로딩된다(`스키마에 정의된 키는 모델이 모두 읽는다` 테스트가 확인한다).
-  - 범위·형식 제약(ms ≥ 0, hostPattern 등)은 CI의 `check-jsonschema` 단계가 번들 설정 파일을 스키마로 검증해 막는다.
+  - 스키마에 없는 키(오타 포함)는 값을 읽기 전에 경로를 모두 모아 실패한다(#4). 오타 난 키가 조용히 무시되어 기본값이 쓰이는 것을 막고, 필수 키 오타(`startURL`)도 "필요합니다" 대신 오타 위치로 알린다.
+    - 아는 키 목록(`AppConfig.knownKeys`)은 최소 설정으로 모델을 한 번 만들며 읽은 키를 기록해 얻는다. 그래서 모델은 스키마의 모든 키를 조건 없이 읽어야 한다.
+    - 이 목록이 스키마의 object별 속성과 정확히 같은지, 스키마의 모든 object가 `additionalProperties: false`인지는 테스트가 확인한다. 스키마와 모델 중 한쪽만 고치면 테스트가 실패한다.
+  - 아는 키에 `null`을 직접 적으면 기본값을 쓰지 않고 타입 오류로 실패한다(생략은 허용).
+  - 로더가 다시 검사하는 것: 모르는 키, 필수 키, 타입, enum 값, 색상 형식, URL에 scheme·host가 있는지, `allowedHosts`가 비었는지, 강제 업데이트의 `checkUrl`, prod 제약.
+  - 로더가 검사하지 않는 것(범위, `hostPattern`, URL scheme 종류, `uniqueItems` 등)은 CI가 막는다. `tool/validate_config.sh`가 `check-jsonschema`로 번들 설정 파일을 검증한다. `format: uri` 검사에 필요한 `rfc3987`이 빠지면 잘못된 fixture가 통과하는지 보고 실패한다. 런타임 범위 검사는 #5에서 다룬다.
   - prod 제약(https, 개발용 옵션 금지)을 한 번 더 검사한다.
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.

@@ -26,6 +26,7 @@
 - `docs/`: 단계별 설계·결정 문서 (`phase-0-requirements.md`, `phase-1-setup.md`, ...)
 - `test/`: Dart 테스트. 공용 도구는 `test/helpers.dart` (#10에서 추가)
 - `test-page/`: 단계별 검증용 기능 테스트 HTML 페이지 (실행 방법은 README)
+- `tool/`: CI 보조 스크립트 (`validate_config.sh`: 설정 스키마 검증, #4)
 - `android/`, `ios/`
 
 ## 3. 코딩 원칙

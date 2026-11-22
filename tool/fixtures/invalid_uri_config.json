@@ -1,0 +1,15 @@
+{
+  "$schema": "../../config/app_config.schema.json",
+  "flavor": "dev",
+  "app": {
+    "name": "U4",
+    "startUrl": "https://www.example.com/",
+    "allowedHosts": ["www.example.com"]
+  },
+  "extras": {
+    "forceUpdate": {
+      "enabled": true,
+      "checkUrl": "not a uri at all"
+    }
+  }
+}

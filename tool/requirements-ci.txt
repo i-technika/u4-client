@@ -1,0 +1,4 @@
+# CI 설정 스키마 검증 도구 (tool/validate_config.sh). 버전을 올릴 때는 PR로 하나씩 올린다.
+check-jsonschema==0.38.2
+# format: uri 검사에 필요하다. 없으면 check-jsonschema가 uri 형식을 검사하지 않고 통과시킨다.
+rfc3987==1.3.8
