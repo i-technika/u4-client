@@ -86,6 +86,7 @@ jobs:
 
       # flavor마다 설정 파일·앱 ID가 다르므로 셋 다 빌드한다.
       - name: Build Android APK (Release, all flavors)
+        id: build-apk
         run: |
           flutter build apk --release --flavor dev
           flutter build apk --release --flavor stg
@@ -95,6 +96,16 @@ jobs:
       - name: Check Android permissions in APKs
         run: |
           bash tool/check_android_permissions.sh \
+            build/app/outputs/flutter-apk/app-dev-release.apk \
+            build/app/outputs/flutter-apk/app-stg-release.apk \
+            build/app/outputs/flutter-apk/app-prod-release.apk
+
+      # 런처 이름(aapt2 badging)이 flavor별 설정 JSON의 app.name과 같은지 본다 (#39).
+      # 권한 검사가 실패해도 결과를 함께 보도록 빌드만 성공하면 실행한다.
+      - name: Check Android launcher labels in APKs
+        if: ${{ !cancelled() && steps.build-apk.outcome == 'success' }}
+        run: |
+          bash tool/check_android_app_label.sh \
             build/app/outputs/flutter-apk/app-dev-release.apk \
             build/app/outputs/flutter-apk/app-stg-release.apk \
             build/app/outputs/flutter-apk/app-prod-release.apk

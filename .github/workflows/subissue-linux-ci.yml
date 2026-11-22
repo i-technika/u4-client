@@ -54,12 +54,20 @@ jobs:
         run: flutter test
 
       - name: Build Android APK (Debug, dev flavor)
-        run: flutter build apk --debug --flavor dev
+        id: build-apk
+        run:flutter build apk --debug --flavor dev
 
       # 병합된 최종 권한에 미디어·저장소 권한이 없는지 APK로 검사한다 (#36).
       # 플러그인이 새로 넣는 권한은 소스 매니페스트 테스트로 잡을 수 없다. 내용은 스크립트 참고.
       - name: Check Android permissions in APK
         run: bash tool/check_android_permissions.sh build/app/outputs/flutter-apk/app-dev-debug.apk
+
+      # 런처 이름(aapt2 badging)이 config/app_config.dev.json의 app.name과 같은지 본다 (#39).
+      # dev 이름(U4 DEV)은 prod 이름(U4)과 달라서, appNameOf가 한 값을 돌려주는 회귀를 dev 하나로 잡는다.
+      # 전 flavor 비교는 Milestone Full CI가 한다. 권한 검사가 실패해도 빌드만 성공하면 실행한다.
+      - name: Check Android launcher label in APK
+        if: ${{ !cancelled() && steps.build-apk.outcome == 'success' }}
+        run: bash tool/check_android_app_label.sh build/app/outputs/flutter-apk/app-dev-debug.apk
 
       # 설정 파일을 스키마로 검증한다 (#4). 내용은 tool/validate_config.sh 참고.
       # 앞 단계가 실패해도 결과를 함께 보도록 마지막에 두고 항상 실행한다.

@@ -81,7 +81,11 @@
     - 설정 단계에서 세 flavor 파일을 모두 읽으므로, 한 flavor 파일이 없거나 깨져도 모든 flavor 빌드가 실패한다. 오류에는 파일 경로가 붙는다.
   - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo.xcconfig`(Debug·Release xcconfig가 포함)에 손으로 적는다. 아래 "iOS flavor는 아직 없다" 때문에 flavor와 관계없이 prod 이름(U4)이 표시된다. **prod `app.name`을 바꾸면 `AppInfo.xcconfig`도 같이 고친다.**
   - `test/app_display_name_test.dart`가 연결이 끊기는 경우를 잡는다.
-    - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 빌드한 APK로 확인한다(`aapt2 dump badging`의 `application-label`). CI 자동 비교는 #39에서 추가한다.
+    - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다.
+  - CI가 빌드한 APK의 런처 이름을 JSON과 비교한다 (#39). `tool/check_android_app_label.sh`가 `aapt2 dump badging`에서 `application-label`, 지역화 `application-label-<로캘>`, `launchable-activity`의 `label`을 읽어 APK 파일 이름(`app-<flavor>-<buildType>.apk`)의 flavor JSON `app.name`과 비교하고, 하나라도 다르거나 라벨 줄을 찾지 못하면 기대값·실제값을 출력하고 실패한다.
+    - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. dev 이름(`U4 DEV`)이 prod 이름(`U4`)과 달라서, `appNameOf`가 JSON과 상관없는 한 값을 돌려주는 회귀는 dev 하나로도 잡힌다.
+    - aapt2는 라벨을 출력할 때 `\`·`"`·줄바꿈을 이스케이프하므로 기대값도 같은 표기로 바꿔 비교한다. aapt2가 매니페스트 문자열을 처리하며 공백 등을 바꾸면 런처 이름이 JSON과 실제로 다른 것이므로 실패로 본다.
+    - 판정 로직은 매번 내장 fixture로 먼저 확인한다. 정상 덤프(이름에 `'`·`"` 포함)는 통과하고, 라벨 하나가 다르거나 라벨 줄이 빠진 덤프는 실패해야 한다.
     - iOS: `AppInfo.xcconfig` 값이 prod `app.name`과 같은지, Debug·Release xcconfig, Xcode 프로젝트, 지역화 `InfoPlist.strings`가 이름을 덮어쓰지 않는지.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
 - 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
