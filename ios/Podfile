@@ -1,14 +1,22 @@
-# 플러그인은 기본적으로 Swift Package Manager로 연결된다. SwiftPM을 지원하지 않는
-# 플러그인(flutter_inappwebview_ios 등)만 이 Podfile로 설치된다.
+# 플러그인은 기본적으로 Swift Package Manager로 연결된다. SwiftPM을 지원하지 않는 플러그인만
+# 이 Podfile로 설치되는데, Flutter 3.50.0 기준으로 그런 플러그인이 없어 `Flutter` pod만 설치된다
+# (Podfile.lock, #38). 아래 post_install의 permission_handler 매크로도 지금은 효과가 없다.
 platform :ios, '16.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# flavor별 build configuration (#38). 이름은 <모드>-<flavor>이고, scheme `dev`/`stg`/`prod`가 고른다.
 project 'Runner', {
-  'Debug' => :debug,
-  'Profile' => :release,
-  'Release' => :release,
+  'Debug-dev' => :debug,
+  'Debug-stg' => :debug,
+  'Debug-prod' => :debug,
+  'Profile-dev' => :release,
+  'Profile-stg' => :release,
+  'Profile-prod' => :release,
+  'Release-dev' => :release,
+  'Release-stg' => :release,
+  'Release-prod' => :release,
 }
 
 def flutter_root

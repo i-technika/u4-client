@@ -15,7 +15,8 @@
 - **네이티브 연동:** 웹 코드는 브라우저 표준 그대로 두고, 앱이 웹뷰 콜백이나 **표준 웹 API 폴리필**로 가로챈다. 앱 전용 기능은 `window.App.*` 네임스페이스와 `appready` 이벤트로 노출한다 (M3).
 - **메인 화면과 팝업은 같은 `AppWebView` 위젯**을 쓴다. Alert·GPS·파일 처리가 팝업 안에서도 똑같이 동작해야 한다.
 - **설정:** `config/app_config.<flavor>.json`(dev/stg/prod)을 `AppConfig`로 읽는다. 스키마는 `config/app_config.schema.json`.
-  - Android는 `productFlavors`(`--flavor dev|stg|prod`), iOS는 Xcode flavor가 아직 없어 `--dart-define=FLAVOR=`로 고른다.
+  - Android는 `productFlavors`, iOS는 Xcode scheme(`dev`/`stg`/`prod`)과 build configuration(`Debug-dev` 등)으로 나누고, 둘 다 `--flavor dev|stg|prod`로 고른다 (#38).
+  - iOS bundle ID·앱 이름은 `ios/Flutter/AppInfo-<flavor>.xcconfig`에 있다. 설정 JSON의 `app.name`이나 Android applicationId를 바꾸면 같이 고친다.
   - release 빌드는 flavor를 지정하지 않으면 시작하지 않는다.
 - 직접 의존성은 정확한 버전으로 고정하고, 올릴 때는 PR로 하나씩 올린다.
 
@@ -26,7 +27,7 @@
 - `docs/`: 단계별 설계·결정 문서 (`phase-0-requirements.md`, `phase-1-setup.md`, ...)
 - `test/`: Dart 테스트. 공용 도구는 `test/helpers.dart` (#10에서 추가)
 - `test-page/`: 단계별 검증용 기능 테스트 HTML 페이지 (실행 방법은 README)
-- `tool/`: CI 보조 스크립트 (`validate_config.sh`: 설정 스키마 검증, #4 / `check_android_permissions.sh`: APK 금지 권한 검사, #36)
+- `tool/`: CI 보조 스크립트 (`validate_config.sh`: 설정 스키마 검증, #4 / `check_android_permissions.sh`: APK 금지 권한 검사, #36 / `check_ios_flavors.sh`: iOS flavor별 실제 bundle ID·앱 이름 확인, macOS 전용, #38)
 - `android/`, `ios/`
 
 ## 3. 코딩 원칙
@@ -40,6 +41,7 @@
 - Flutter SDK가 시스템 PATH에 없을 수 있다. `flutter`를 찾지 못하면 Bash에서
   `export PATH="/c/Users/fmthead/develop/flutter/bin:$PATH"` 후 실행한다.
 - adb: `/c/Users/fmthead/AppData/Local/Android/Sdk/platform-tools/adb.exe`
+- macOS(iOS 작업): Flutter 3.50.0은 `~/develop/flutter-3.50.0`에 있다(`~/flutter`는 다른 버전). `export PATH="$HOME/develop/flutter-3.50.0/bin:$PATH"` 후 실행한다. Android SDK는 `~/Library/Android/sdk`.
 - GitHub CLI(`gh`)로 이슈/PR/프로젝트를 관리한다. 저장소: `i-technika/u4-client`
 - `gh`에 여러 줄 본문을 넘길 때는 셸 이스케이프 깨짐을 막기 위해 **반드시 임시 파일 + `--body-file`** 을 사용한다.
 - Python으로 한글을 출력할 때는 `python -I -X utf8`을 쓴다 (`-I`는 `PYTHONIOENCODING`을 무시한다).

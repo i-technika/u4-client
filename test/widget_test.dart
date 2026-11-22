@@ -69,9 +69,7 @@ void main() {
 
     testWidgets('flavor를 정하지 못하면 오류 화면을 띄우고 예외를 보고한다', (tester) async {
       // Flavor.current처럼 load 호출 전에 동기적으로 던지는 경우
-      const error = AppConfigException(
-        'release 빌드는 --flavor 또는 --dart-define=FLAVOR가 필요합니다',
-      );
+      const error = AppConfigException('release 빌드는 --flavor가 필요합니다');
       final app = await buildApp(() => throw error);
       expect(tester.takeException(), same(error));
 
