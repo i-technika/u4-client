@@ -1,6 +1,6 @@
 package: com.itechnika.u4.dev
 uses-permission: name='android.permission.INTERNET'
-uses-permission: name='android.permission.READ_MEDIA_IMAGES'
+uses-permission-v2: name='android.permission.READ_MEDIA_IMAGES'
 uses-permission-sdk-23: name='android.permission.READ_MEDIA_VIDEO'
 uses-permission: name='android.permission.READ_MEDIA_AUDIO' required='false'
 optional-permission: name='android.permission.READ_MEDIA_AUDIO'
