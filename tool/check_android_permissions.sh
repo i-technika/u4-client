@@ -2,13 +2,15 @@
 # 빌드한 APK의 최종 권한(병합된 매니페스트)에 금지 권한이 없는지 검사한다 (#36).
 # 금지 목록은 tool/android_forbidden_permissions.txt. 소스 매니페스트 검사(flutter test)로는
 # 플러그인을 추가·업데이트해서 새로 들어온 권한을 잡을 수 없어서 APK를 직접 본다.
-# Sub-issue Linux CI(dev debug)와 Milestone Full CI(전 flavor release APK)가 같이 쓴다.
+# Sub-issue Linux CI(dev·prod debug)와 Milestone Full CI(전 flavor release APK)가 같이 쓴다.
 # AAB는 aapt2가 읽지 못해 아직 검사하지 않는다 (docs/phase-1-setup.md 3장).
 #
 # 실행: bash tool/check_android_permissions.sh <apk>... (bash 3.2 이상, 경로는 현재 위치 기준)
 # aapt2는 $AAPT2, 없으면 $ANDROID_HOME(또는 $ANDROID_SDK_ROOT)/build-tools의 최신 정식 버전을 쓴다.
 set -euo pipefail
 TOOL_DIR="$(cd "$(dirname "$0")" && pwd)"
+# find_aapt2
+. "$TOOL_DIR/android_sdk.sh"
 
 if [ "$#" -eq 0 ]; then
   echo "사용법: bash tool/check_android_permissions.sh <apk>..." >&2
@@ -121,30 +123,6 @@ EOF
     return 1
   fi
   echo "ok -- $label: 금지 권한 없음 ($(printf '%s\n' "$names" | grep -c .)개 권한 확인)"
-}
-
-find_aapt2() {
-  if [ -n "${AAPT2:-}" ]; then
-    echo "$AAPT2"
-    return
-  fi
-  local sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-  if [ -z "$sdk" ] || [ ! -d "$sdk/build-tools" ]; then
-    echo "Android SDK를 찾을 수 없습니다. ANDROID_HOME 또는 AAPT2를 지정하세요" >&2
-    return 1
-  fi
-  local v exe
-  # rc·preview 같은 미리보기 버전은 빼고 정식 버전(숫자.숫자.숫자)만 고른다.
-  for v in $(ls "$sdk/build-tools" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V -r); do
-    for exe in aapt2 aapt2.exe; do
-      if [ -x "$sdk/build-tools/$v/$exe" ]; then
-        echo "$sdk/build-tools/$v/$exe"
-        return
-      fi
-    done
-  done
-  echo "$sdk/build-tools에 aapt2가 있는 정식 버전이 없습니다" >&2
-  return 1
 }
 
 # 판정 로직이 실제로 동작하는지 먼저 확인한다. 금지 목록의 모든 권한을 여러 형식

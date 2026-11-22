@@ -39,7 +39,7 @@ void main() {
       // put("appName", ...), mapOf("appName" to ...), buildType 쪽 placeholder도 함께 막는다.
       expect('"appName"'.allMatches(gradle), hasLength(1));
       // appNameOf("prod")처럼 한 flavor 값을 모든 flavor에 넣는 실수도 막는다.
-      // appNameOf가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다 (Android 빌드로 확인).
+      // appNameOf가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다 (CI가 APK로 확인: tool/check_android_app_label.sh, #39).
       expect(
         gradle,
         matches(
