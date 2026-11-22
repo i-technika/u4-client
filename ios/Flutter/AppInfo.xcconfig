@@ -3,5 +3,5 @@
 // 기준은 config/app_config.<flavor>.json의 app.name이지만, iOS는 아직 Xcode flavor가 없어
 // 빌드 시 JSON을 읽지 못하고 bundle ID도 prod와 같으므로 prod 이름을 손으로 적는다.
 // prod app.name을 바꾸면 이 값도 같이 고친다. test/app_display_name_test.dart가 어긋남을 잡는다.
-// iOS flavor(build configuration·scheme)를 만들면 flavor별 xcconfig에서 이 값을 덮어쓴다.
+// iOS flavor(build configuration·scheme)를 만들면 flavor별 xcconfig에서 이 값을 덮어쓴다 (#38).
 APP_DISPLAY_NAME = U4

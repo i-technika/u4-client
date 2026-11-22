@@ -81,7 +81,7 @@
     - 설정 단계에서 세 flavor 파일을 모두 읽으므로, 한 flavor 파일이 없거나 깨져도 모든 flavor 빌드가 실패한다. 오류에는 파일 경로가 붙는다.
   - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo.xcconfig`(Debug·Release xcconfig가 포함)에 손으로 적는다. 아래 "iOS flavor는 아직 없다" 때문에 flavor와 관계없이 prod 이름(U4)이 표시된다. **prod `app.name`을 바꾸면 `AppInfo.xcconfig`도 같이 고친다.**
   - `test/app_display_name_test.dart`가 연결이 끊기는 경우를 잡는다.
-    - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 빌드한 APK로 확인한다(`aapt2 dump badging`의 `application-label`).
+    - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 빌드한 APK로 확인한다(`aapt2 dump badging`의 `application-label`). CI 자동 비교는 #39에서 추가한다.
     - iOS: `AppInfo.xcconfig` 값이 prod `app.name`과 같은지, Debug·Release xcconfig, Xcode 프로젝트, 지역화 `InfoPlist.strings`가 이름을 덮어쓰지 않는지.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
 - 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
@@ -91,7 +91,7 @@
 
 iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define`으로만 고른다. flavor별 bundle ID와 앱 이름을 주려면 Xcode에서 build configuration(`Debug-dev` 등)과 scheme을 만들어야 하는데, Windows에서는 Xcode 프로젝트를 안전하게 수정할 수 없어 macOS 환경에서 이어서 한다.
 
-flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME`을 그 flavor의 `app.name`으로 덮어쓴다. 그때 `test/app_display_name_test.dart`의 "덮어쓰지 않는다" 검사를 flavor별 xcconfig 값이 그 flavor의 `app.name`과 같은지 보는 검사로 바꾼다.
+flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME`을 그 flavor의 `app.name`으로 덮어쓴다. 그때 `test/app_display_name_test.dart`의 "덮어쓰지 않는다" 검사를 flavor별 xcconfig 값이 그 flavor의 `app.name`과 같은지 보는 검사로 바꾼다. 이 작업은 #38에서 한다.
 
 ## 3. Android 설정
 
