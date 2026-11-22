@@ -82,11 +82,12 @@
   - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo.xcconfig`(Debug·Release xcconfig가 포함)에 손으로 적는다. 아래 "iOS flavor는 아직 없다" 때문에 flavor와 관계없이 prod 이름(U4)이 표시된다. **prod `app.name`을 바꾸면 `AppInfo.xcconfig`도 같이 고친다.**
   - `test/app_display_name_test.dart`가 연결이 끊기는 경우를 잡는다.
     - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다.
-  - CI가 빌드한 APK의 런처 이름을 JSON과 비교한다 (#39). `tool/check_android_app_label.sh`가 `aapt2 dump badging`에서 `application-label`, 지역화 `application-label-<로캘>`, `launchable-activity`의 `label`을 읽어 APK 파일 이름(`app-<flavor>-<buildType>.apk`)의 flavor JSON `app.name`과 비교하고, 하나라도 다르거나 라벨 줄을 찾지 못하면 기대값·실제값을 출력하고 실패한다.
-    - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. dev 이름(`U4 DEV`)이 prod 이름(`U4`)과 달라서, `appNameOf`가 JSON과 상관없는 한 값을 돌려주는 회귀는 dev 하나로도 잡힌다.
-    - aapt2는 라벨을 출력할 때 `\`·`"`·줄바꿈을 이스케이프하므로 기대값도 같은 표기로 바꿔 비교한다. aapt2가 매니페스트 문자열을 처리하며 공백 등을 바꾸면 런처 이름이 JSON과 실제로 다른 것이므로 실패로 본다.
-    - 판정 로직은 매번 내장 fixture로 먼저 확인한다. 정상 덤프(이름에 `'`·`"` 포함)는 통과하고, 라벨 하나가 다르거나 라벨 줄이 빠진 덤프는 실패해야 한다.
     - iOS: `AppInfo.xcconfig` 값이 prod `app.name`과 같은지, Debug·Release xcconfig, Xcode 프로젝트, 지역화 `InfoPlist.strings`가 이름을 덮어쓰지 않는지.
+  - CI가 빌드한 APK의 런처 이름을 JSON과 비교한다 (#39). `tool/check_android_app_label.sh`가 `aapt2 dump badging`에서 `application-label`, 로캘별 `application-label-<로캘>`(리소스에 있는 로캘마다 나온다), `launchable-activity`·`leanback-launchable-activity`의 `label`을 읽어 APK 파일 이름(`app-<flavor>-<buildType>.apk`)의 flavor JSON `app.name`과 비교한다. 하나라도 다르거나 기본 라벨·`launchable-activity` 줄을 찾지 못하면 기대값·실제값을 출력하고 실패한다.
+    - activity 라벨이 비어 있으면 앱 라벨을 물려받으므로 통과로 본다. 속성이 없는 것과 `android:label=""`은 badging으로 구분되지 않는데, 후자는 위 정적 테스트가 막는다. `application: label=` 줄은 `application-label`과 같은 값이라 보지 않는다.
+    - Sub-issue Linux CI는 dev·prod debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. stg만 달라지는 회귀는 Milestone Full CI에서 드러난다.
+    - aapt2는 라벨을 출력할 때 `\`·`"`·줄바꿈만 이스케이프한다(탭 등은 그대로). 기대값도 같은 표기로 바꿔 문자열로 비교하고, 실패 메시지의 기대·실제 값도 이 표기다. aapt2가 매니페스트 문자열을 처리하며 공백 등을 바꾸면 런처 이름이 JSON과 실제로 다른 것이므로 실패로 본다.
+    - 판정 로직은 매번 내장 fixture로 먼저 확인한다. 정상 덤프(이름에 `'`·`"`·탭·CR·`icon='` 포함, CRLF 출력)는 통과하고, 라벨 하나가 다르거나(로캘·TV activity 포함, 숫자 표기·뒤 공백만 다른 경우 포함) 라벨 줄이 빠진 덤프는 실패해야 한다. JSON → aapt2 표기 변환과 파일 이름 → flavor 변환도 같이 확인한다.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
 - 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
 - 세 설정 파일은 모두 asset으로 번들된다. 비밀 값이 없어서 그렇게 했지만, 설정에 민감한 값이 들어가게 되면 flavor별 asset으로 나눠야 한다.
