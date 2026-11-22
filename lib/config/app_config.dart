@@ -8,7 +8,8 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 ///
 /// 구조와 기본값은 `config/app_config.schema.json`을 따른다. 스키마 검증은
 /// 에디터와 CI(`tool/validate_config.sh`)에서 하고, 여기서는 모르는 키 거부·
-/// 기본값 채우기·타입과 enum 변환·prod 제약 등을 다시 검사한다
+/// 기본값 채우기·타입과 enum 변환·범위와 형식·prod 제약 등을 다시 검사한다.
+/// CI를 거치지 않은 빌드도 스키마를 어긴 설정으로 시작하지 않게 하기 위해서다
 /// (항목은 docs/phase-1-setup.md 5장).
 @immutable
 class AppConfig {
@@ -42,10 +43,9 @@ class AppConfig {
   /// 모델은 모든 키를 조건 없이 읽으므로 입력과 상관없이 같은 표가 나온다.
   /// 스키마와 정확히 같은지는 테스트가 확인한다.
   ///
-  /// 최소 설정은 모델이 읽기 단계에서 하는 검사(필수 키, 타입, 형식)를 모두
-  /// 통과해야 한다. 필수 키를 늘리거나 읽기 단계에 범위 검사를 넣으면(#5)
-  /// 최소 설정도 함께 고친다. 어긋나면 사용자 설정 오류가 아닌 코드 버그로
-  /// [StateError]를 던진다.
+  /// 최소 설정은 모델이 읽기 단계에서 하는 검사(필수 키, 타입, 범위, 형식)를
+  /// 모두 통과해야 한다. 필수 키나 읽기 단계 검사를 늘리면 최소 설정도 함께
+  /// 고친다. 어긋나면 사용자 설정 오류가 아닌 코드 버그로 [StateError]를 던진다.
   @visibleForTesting
   static final Map<String, Set<String>> knownKeys = () {
     final keys = <String, Set<String>>{};
@@ -71,6 +71,20 @@ class AppConfig {
       keys.map((path, set) => MapEntry(path, Set<String>.unmodifiable(set))),
     );
   }();
+
+  /// 로더가 검사하는 스키마 `pattern` 문자열. 스키마와 같은 문자열인지는
+  /// 테스트가 확인한다 (#5).
+  @visibleForTesting
+  static const schemaPatterns = (
+    /// `$defs.hostPattern`: allowedHosts, externalHosts, deeplink.domains의 원소
+    host: r'^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$',
+
+    /// `$defs.color`
+    color: r'^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$',
+
+    /// `app.startUrl` (모든 flavor). prod의 `^https://`는 [_validate]가 본다.
+    httpUrl: r'^https?://',
+  );
 
   static final _identifier = RegExp(r'^[A-Za-z_$][A-Za-z0-9_$]*$');
 
@@ -175,7 +189,9 @@ class AppConfig {
       throw const AppConfigException(r'$.extras.forceUpdate.checkUrl이 필요합니다');
     }
     if (flavor != Flavor.prod) return;
-    // 스키마 검증을 거치지 않은 빌드 대비
+    // 스키마 검증을 거치지 않은 빌드 대비. 읽기 단계에서 원문이 소문자
+    // `http://`·`https://`로 시작하는지 봤으므로 scheme 비교는 스키마의
+    // `^https://`와 같다.
     if (app.startUrl.scheme != 'https') {
       throw const AppConfigException('prod의 startUrl은 https여야 합니다');
     }
@@ -230,13 +246,13 @@ class AppConfigException implements Exception {
 @immutable
 class AppInfo {
   AppInfo._(_Reader r)
-    : name = r.string('name'),
-      startUrl = r.uri('startUrl'),
-      allowedHosts = r.strings('allowedHosts'),
-      externalHosts = r.strings('externalHosts'),
+    : name = r.string('name', minLength: 1),
+      startUrl = r.httpUri('startUrl'),
+      allowedHosts = r.hosts('allowedHosts'),
+      externalHosts = r.hosts('externalHosts'),
       userAgentSuffix = r.string(
         'userAgentSuffix',
-        'U4App/{version} ({platform})',
+        fallback: 'U4App/{version} ({platform})',
       );
 
   final String name;
@@ -427,7 +443,7 @@ class PopupConfig {
       toolbarCloseButton: toolbar.boolean('closeButton', true),
       toolbarTitle: toolbar.boolean('title', true),
       toolbarProgressBar: toolbar.boolean('progressBar', true),
-      maxDepth: r.integer('maxDepth', 5),
+      maxDepth: r.integer('maxDepth', 5, min: 1, max: 10),
     );
   }
 
@@ -520,7 +536,11 @@ enum AppPermission {
 @immutable
 class PermissionsConfig {
   PermissionsConfig._(_Reader r)
-    : _requestOnLaunch = r.choices('requestOnLaunch', AppPermission.values),
+    : _requestOnLaunch = r.choices(
+        'requestOnLaunch',
+        AppPermission.values,
+        unique: true,
+      ),
       deniedGuide = r.boolean('deniedGuide', true);
 
   /// 설정에 적힌 그대로의 목록. 설정 파일은 플랫폼 공통이라 어떤 플랫폼에서는
@@ -565,7 +585,7 @@ class NetworkConfig {
       offlinePage: offlinePage,
       errorPage: errorPage,
       retryAutoOnReconnect: retry.boolean('autoOnReconnect', true),
-      retryMaxAttempts: retry.integer('maxAttempts', 3),
+      retryMaxAttempts: retry.integer('maxAttempts', 3, min: 0),
       allowHttp: r.boolean('allowHttp', false),
       ignoreSslErrors: r.boolean('ignoreSslErrors', false),
       debuggable: r.boolean('debuggable', false),
@@ -621,9 +641,9 @@ class ForceUpdateConfig {
 class ExtrasConfig {
   ExtrasConfig._(_Reader r)
     : pushEnabled = r.child('push').boolean('enabled', false),
-      deeplinkDomains = r.child('deeplink').strings('domains'),
+      deeplinkDomains = r.child('deeplink').hosts('domains'),
       forceUpdate = ForceUpdateConfig._(r.child('forceUpdate')),
-      locale = r.string('locale', 'system');
+      locale = r.string('locale', fallback: 'system');
 
   final bool pushEnabled;
   final List<String> deeplinkDomains;
@@ -684,22 +704,64 @@ class _Reader {
   bool boolean(String key, bool fallback) =>
       _get<bool>(key, 'boolean') ?? fallback;
 
-  int integer(String key, int fallback) =>
-      _get<int>(key, 'integer') ?? fallback;
+  static final _hostPattern = RegExp(AppConfig.schemaPatterns.host);
+  static final _colorPattern = RegExp(AppConfig.schemaPatterns.color);
+  static final _httpUrlPattern = RegExp(AppConfig.schemaPatterns.httpUrl);
 
+  /// [min]·[max]는 스키마의 `minimum`·`maximum`(포함)이다. 기본값도 같이 검사해
+  /// 모델 기본값이 범위를 벗어나는 코드 버그도 드러나게 한다.
+  int integer(String key, int fallback, {int? min, int? max}) {
+    final v = _get<int>(key, 'integer') ?? fallback;
+    if ((min != null && v < min) || (max != null && v > max)) {
+      final range = switch ((min, max)) {
+        (final lo?, final hi?) => '$lo 이상 $hi 이하여야',
+        (final lo?, null) => '$lo 이상이어야',
+        (null, final hi?) => '$hi 이하여야',
+        (null, null) => throw StateError('도달 불가'),
+      };
+      throw AppConfigException('$_path.$key: $range 합니다 ($v)');
+    }
+    return v;
+  }
+
+  /// 스키마 `$defs.ms`(0 이상 1시간 이하의 정수).
+  ///
+  /// 상한이 없으면 큰 값에서 `Duration`의 마이크로초 계산이 int64를 넘어
+  /// 음수 지연이 된다 (#5 리뷰 R1).
   Duration millis(String key, int fallback) =>
-      Duration(milliseconds: integer(key, fallback));
+      Duration(milliseconds: integer(key, fallback, min: 0, max: 3600000));
 
-  /// [fallback]이 없으면 필수 값이다.
-  String string(String key, [String? fallback]) {
+  /// [fallback]이 없으면 필수 값이다. [minLength]는 스키마의 `minLength`다.
+  /// 스키마처럼 UTF-16 단위가 아닌 code point 수로 센다.
+  String string(String key, {String? fallback, int minLength = 0}) {
     final v = _get<String>(key, 'string') ?? fallback;
     if (v == null) throw AppConfigException('$_path.$key가 필요합니다');
+    if (v.runes.length < minLength) {
+      throw AppConfigException(
+        minLength == 1
+            ? '$_path.$key: 빈 문자열은 쓸 수 없습니다'
+            : '$_path.$key: $minLength자 이상이어야 합니다',
+      );
+    }
     return v;
   }
 
   String? optString(String key) => _get<String>(key, 'string');
 
-  Uri uri(String key) => _parseUri(key, string(key));
+  /// `http://`·`https://`로 시작하는 필수 URL (스키마 `^https?://`).
+  ///
+  /// 스키마 pattern은 대소문자를 구분하므로 원문을 그대로 검사한다.
+  /// [Uri]는 scheme을 소문자로 바꾸므로 파싱 뒤에 보면 `HTTPS://`가 통과한다.
+  Uri httpUri(String key) {
+    final v = string(key);
+    final u = _parseUri(key, v);
+    if (!_httpUrlPattern.hasMatch(v)) {
+      throw AppConfigException(
+        '$_path.$key: http 또는 https URL이어야 합니다 (${jsonEncode(v)})',
+      );
+    }
+    return u;
+  }
 
   Uri? optUri(String key) {
     final v = optString(key);
@@ -715,6 +777,31 @@ class _Reader {
         return e;
       }),
     );
+  }
+
+  /// 스키마 `uniqueItems`. 원소 형식·enum 검사 뒤에 불러 중복이 원소 오류를
+  /// 가리지 않게 한다 (`["bogus", "bogus"]`는 "알 수 없는 값"으로 알린다).
+  void _rejectDuplicates(String key, List<String> list) {
+    final seen = <String>{};
+    for (final (i, e) in list.indexed) {
+      if (!seen.add(e)) {
+        throw AppConfigException('$_path.$key[$i]: 중복된 값 (${jsonEncode(e)})');
+      }
+    }
+  }
+
+  /// 스키마 `$defs.hostPattern` 원소의 중복 없는 배열 (예: `*.example.com:8080`).
+  List<String> hosts(String key) {
+    final v = strings(key);
+    for (final (i, h) in v.indexed) {
+      if (!_hostPattern.hasMatch(h)) {
+        throw AppConfigException(
+          '$_path.$key[$i]: 호스트 형식 오류 (${jsonEncode(h)})',
+        );
+      }
+    }
+    _rejectDuplicates(key, v);
+    return v;
   }
 
   T choice<T extends Enum>(String key, List<T> values, [T? fallback]) =>
@@ -735,19 +822,27 @@ class _Reader {
     return _match(key, values, raw, nameOf);
   }
 
-  List<T> choices<T extends Enum>(String key, List<T> values) {
-    return List.unmodifiable(
-      strings(key).map((s) => _match(key, values, s, null)),
+  /// enum 값 배열. [unique]는 스키마의 `uniqueItems`다.
+  List<T> choices<T extends Enum>(
+    String key,
+    List<T> values, {
+    bool unique = false,
+  }) {
+    final raw = strings(key);
+    final result = List<T>.unmodifiable(
+      raw.map((s) => _match(key, values, s, null)),
     );
+    if (unique) _rejectDuplicates(key, raw);
+    return result;
   }
 
   Color? color(String key) {
     final v = optString(key);
     if (v == null) return null;
-    final hex = RegExp(r'^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$')
-        .firstMatch(v)
-        ?.group(1);
-    if (hex == null) throw AppConfigException('$_path.$key: 색상 형식 오류 ($v)');
+    final hex = _colorPattern.firstMatch(v)?.group(1);
+    if (hex == null) {
+      throw AppConfigException('$_path.$key: 색상 형식 오류 (${jsonEncode(v)})');
+    }
     return Color(int.parse(hex.length == 6 ? 'FF$hex' : hex, radix: 16));
   }
 
@@ -762,16 +857,27 @@ class _Reader {
       if (name(v) == raw) return v;
     }
     throw AppConfigException(
-      '$_path.$key: 알 수 없는 값 "$raw" (${values.map(name).join(' / ')})',
+      '$_path.$key: 알 수 없는 값 ${jsonEncode(raw)} '
+      '(${values.map(name).join(' / ')})',
     );
   }
 
+  /// scheme과 host가 있는 URL. 형식 오류는 모두 [AppConfigException]으로 바꾼다.
+  ///
+  /// int 범위를 넘는 포트는 `Uri.tryParse`가 받아 두었다가 `port`를 처음 읽을 때
+  /// [FormatException]을 던진다. 여기서 `port`를 읽어 미리 걸러야 설정 오류
+  /// 화면 대신 앱이 죽는 일이 없다 (#5 리뷰 R2). 음수 포트(`:-1`)도 받아 주므로
+  /// 함께 거부한다 (스키마 `format: uri`도 거부).
   Uri _parseUri(String key, String v) {
-    final u = Uri.tryParse(v);
-    if (u == null || !u.hasScheme || u.host.isEmpty) {
-      throw AppConfigException('$_path.$key: URL 형식 오류 ($v)');
+    try {
+      final u = Uri.tryParse(v);
+      if (u != null && u.hasScheme && u.host.isNotEmpty && u.port >= 0) {
+        return u;
+      }
+    } on FormatException {
+      // 아래에서 형식 오류로 알린다.
     }
-    return u;
+    throw AppConfigException('$_path.$key: URL 형식 오류 (${jsonEncode(v)})');
   }
 
   T? _get<T>(String key, String typeName) {
