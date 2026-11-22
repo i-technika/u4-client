@@ -300,7 +300,12 @@
     }
   },
   "$defs": {
-    "ms": { "type": "integer", "minimum": 0 },
+    "ms": {
+      "description": "밀리초. 상한은 Duration 넘침(음수 지연) 방지용이다 (#5).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
     "hostPattern": {
       "type": "string",
       "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$"

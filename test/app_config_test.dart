@@ -425,7 +425,8 @@ void main() {
     final schema = jsonDecode(
       File('config/app_config.schema.json').readAsStringSync(),
     ) as Map<String, Object?>;
-    final fields = _schemaFields(schema);
+    // 순회 안의 expect가 테스트 안에서 돌도록 처음 쓸 때 만든다.
+    late final fields = _schemaFields(schema);
 
     /// 최소 dev 설정에서 [path](`$` 다음 키들)의 값만 [value]로 바꾼다.
     Map<String, Object?> withValue(List<String> path, Object? value) {
@@ -466,7 +467,7 @@ void main() {
       );
       expect(
         () => AppConfig.fromJson(withValue(['splash', 'maxWaitMs'], -1)),
-        _throwsConfigError(r'$.splash.maxWaitMs: 0 이상이어야 합니다 (-1)'),
+        _throwsConfigError(r'$.splash.maxWaitMs: 0 이상 3600000 이하여야 합니다 (-1)'),
       );
     });
 
@@ -476,6 +477,7 @@ void main() {
             f.schema.containsKey('minimum') || f.schema.containsKey('maximum'),
       );
       // ms 4개 + maxDepth + maxAttempts. 순회가 필드를 놓치는 회귀 방지.
+      // ms 상한은 Duration 넘침(음수 지연) 방지용이다 (R1).
       expect(ranged.map((f) => pathOf(f.path)), hasLength(6));
       for (final f in ranged) {
         final where = pathOf(f.path);
@@ -512,7 +514,7 @@ void main() {
         if (f.schema['uniqueItems'] == true) {
           expect(
             () => AppConfig.fromJson(json),
-            _throwsConfigError('$where[1]: 중복된 값 ($sample)'),
+            _throwsConfigError('$where[1]: 중복된 값 (${jsonEncode(sample)})'),
           );
         } else {
           expect(
@@ -529,7 +531,27 @@ void main() {
         () => AppConfig.fromJson(
           withValue(['permissions', 'requestOnLaunch'], ['camera', 'camera']),
         ),
-        _throwsConfigError(r'$.permissions.requestOnLaunch[1]: 중복된 값 (camera)'),
+        _throwsConfigError(
+          r'$.permissions.requestOnLaunch[1]: 중복된 값 ("camera")',
+        ),
+      );
+    });
+
+    test('중복보다 원소 오류를 먼저 알린다', () {
+      expect(
+        () => AppConfig.fromJson(
+          withValue(['permissions', 'requestOnLaunch'], ['bogus', 'bogus']),
+        ),
+        _throwsConfigError(
+          r'$.permissions.requestOnLaunch: 알 수 없는 값 "bogus" '
+          '(location / camera / microphone / photos / notification)',
+        ),
+      );
+      expect(
+        () => AppConfig.fromJson(
+          withValue(['app', 'allowedHosts'], ['BAD', 'BAD']),
+        ),
+        _throwsConfigError(r'$.app.allowedHosts[0]: 호스트 형식 오류 ("BAD")'),
       );
     });
 
@@ -543,7 +565,7 @@ void main() {
         expect(
           () => AppConfig.fromJson(withValue(['app', 'startUrl'], url)),
           _throwsConfigError(
-            '\$.app.startUrl: http 또는 https URL이어야 합니다 ($url)',
+            '\$.app.startUrl: http 또는 https URL이어야 합니다 (${jsonEncode(url)})',
           ),
           reason: url,
         );
@@ -583,7 +605,7 @@ void main() {
         ]) {
           expect(
             () => AppConfig.fromJson(withValue(f.path, ['example.com', bad])),
-            _throwsConfigError('$where[1]: 호스트 형식 오류 ($bad)'),
+            _throwsConfigError('$where[1]: 호스트 형식 오류 (${jsonEncode(bad)})'),
             reason: '$where "$bad"',
           );
         }
@@ -632,13 +654,9 @@ void main() {
         'uniqueItems', 'pattern', 'format',
       };
       final used = <String>{};
-      final patterns = <String>{};
-      final formats = <String>{};
       void walk(Object? node) {
         if (node is! Map<String, Object?>) return;
         used.addAll(node.keys);
-        if (node['pattern'] case final String p) patterns.add(p);
-        if (node['format'] case final String f) formats.add(f);
         for (final k in ['items', 'if', 'then']) {
           walk(node[k]);
         }
@@ -649,15 +667,93 @@ void main() {
 
       walk(schema);
       expect(used.difference(supported), isEmpty);
-      // prod의 `^https://`는 AppConfig._validate가 본다.
-      expect(patterns, {
-        AppConfig.schemaPatterns.host,
-        AppConfig.schemaPatterns.color,
-        AppConfig.schemaPatterns.httpUrl,
-        '^https://',
+    });
+
+    test('enum 필드는 스키마의 값을 모두 받고 다른 값은 거부한다', () {
+      final enums = [
+        for (final f in fields)
+          if (f.schema['enum'] case final List<Object?> values)
+            (path: f.path, values: values, array: false)
+          else if (f.items?['enum'] case final List<Object?> values)
+            (path: f.path, values: values, array: true),
+      ];
+      // 순회가 필드를 놓치는 회귀 방지 (enum 필드 15개 + requestOnLaunch).
+      expect(enums, hasLength(16));
+      for (final e in enums) {
+        final where = pathOf(e.path);
+        for (final v in e.values) {
+          expect(
+            () => AppConfig.fromJson(withValue(e.path, e.array ? [v] : v)),
+            returnsNormally,
+            reason: '$where = $v',
+          );
+        }
+        const unknown = '__unknown__';
+        expect(
+          () => AppConfig.fromJson(
+            withValue(e.path, e.array ? [unknown] : unknown),
+          ),
+          throwsAt(where),
+          reason: where,
+        );
+      }
+    });
+
+    test('스키마의 값 제약이 로더가 검사하는 제약표와 정확히 같다', () {
+      // 스키마에 값 제약을 더하거나 바꾸면 이 표가 어긋난다. 로더 검사를 함께
+      // 넣고(옆 주석의 위치), 위의 경계·중복·형식 테스트가 새 항목을 다루는지 본다.
+      // enum은 위 테스트가 필드마다 확인하므로 조건부(if/then) 밖에서는 뺀다.
+      final host = AppConfig.schemaPatterns.host;
+      final color = AppConfig.schemaPatterns.color;
+      const ms = {'minimum': 0, 'maximum': 3600000}; // _Reader.millis
+      expect(_schemaConstraints(schema), {
+        // 필수 키: string()/choice()의 fallback 없음
+        r'$ required': ['flavor', 'app'],
+        r'$.app required': ['name', 'startUrl', 'allowedHosts'],
+        r'$.app.name minLength': 1, // string(minLength:)
+        r'$.app.startUrl format': 'uri', // _parseUri (scheme·host만)
+        r'$.app.startUrl pattern': AppConfig.schemaPatterns.httpUrl, // httpUri
+        r'$.app.allowedHosts minItems': 1, // AppConfig._validate
+        r'$.app.allowedHosts uniqueItems': true, // hosts
+        r'$.app.allowedHosts[] pattern': host, // hosts
+        r'$.app.externalHosts uniqueItems': true,
+        r'$.app.externalHosts[] pattern': host,
+        for (final k in [
+          'minDisplayMs',
+          'delayAfterLoadMs',
+          'maxWaitMs',
+          'fadeOutMs',
+        ])
+          for (final MapEntry(:key, :value) in ms.entries)
+            '\$.splash.$k $key': value,
+        // ThemedColor → _Reader.color
+        for (final c in [
+          'splash.bgColor',
+          'systemUi.statusBar.color',
+          'systemUi.navigationBar.color',
+        ])
+          for (final t in ['light', 'dark']) '\$.$c.$t pattern': color,
+        r'$.popup.maxDepth minimum': 1, // integer(min:, max:)
+        r'$.popup.maxDepth maximum': 10,
+        r'$.permissions.requestOnLaunch uniqueItems': true, // choices(unique:)
+        r'$.network.retry.maxAttempts minimum': 0, // integer(min:)
+        r'$.extras.deeplink.domains uniqueItems': true, // hosts
+        r'$.extras.deeplink.domains[] pattern': host,
+        r'$.extras.forceUpdate.checkUrl format': 'uri', // optUri
+        // 강제 업데이트: AppConfig._validate
+        r'if($.extras.forceUpdate) $.extras.forceUpdate required': ['enabled'],
+        r'if($.extras.forceUpdate) $.extras.forceUpdate.enabled const': true,
+        r'then($.extras.forceUpdate) $.extras.forceUpdate required': [
+          'checkUrl',
+        ],
+        // prod 제약: AppConfig._validate
+        r'if($) $ required': ['flavor'],
+        r'if($) $.flavor const': 'prod',
+        r'then($) $.app.startUrl pattern': '^https://',
+        r'then($) $.network.allowHttp const': false,
+        r'then($) $.network.ignoreSslErrors const': false,
+        r'then($) $.network.debuggable const': false,
       });
-      // uri는 로더가 scheme·host만 본다. 세부 문법은 CI가 검사한다.
-      expect(formats, {'uri'});
     });
   });
 }
@@ -671,16 +767,7 @@ List<
   })
 >
 _schemaFields(Map<String, Object?> root) {
-  final defs = root[r'$defs']! as Map<String, Object?>;
-  Map<String, Object?> resolve(Map<String, Object?> s) {
-    final ref = s[r'$ref'];
-    if (ref is! String) return s;
-    final target = resolve(
-      defs[ref.substring(r'#/$defs/'.length)]! as Map<String, Object?>,
-    );
-    // `$ref` 옆의 키(description, default)를 남기고 참조 대상과 합친다.
-    return {...target, ...s}..remove(r'$ref');
-  }
+  Map<String, Object?> resolve(Map<String, Object?> s) => _resolveRef(root, s);
 
   final out =
       <
@@ -708,6 +795,86 @@ _schemaFields(Map<String, Object?> root) {
   }
 
   walk(root, []);
+  return out;
+}
+
+/// [s]의 `$ref`(`#/$defs/...`)를 풀어 참조 대상과 합친다.
+///
+/// 2020-12에서 `$ref`와 옆 키는 둘 다 적용된다(AND). 단순히 합치면 옆 키가
+/// 참조 대상을 덮어써 의미가 달라지므로, 옆 키는 주석(description, default)만 허용한다.
+Map<String, Object?> _resolveRef(
+  Map<String, Object?> root,
+  Map<String, Object?> s,
+) {
+  final ref = s[r'$ref'];
+  if (ref is! String) return s;
+  const prefix = r'#/$defs/';
+  expect(ref, startsWith(prefix));
+  expect(
+    s.keys.toSet().difference({r'$ref', 'description', 'default'}),
+    isEmpty,
+    reason: '$ref 옆의 값 제약은 지원하지 않습니다',
+  );
+  final defs = root[r'$defs']! as Map<String, Object?>;
+  final target = _resolveRef(
+    root,
+    defs[ref.substring(prefix.length)]! as Map<String, Object?>,
+  );
+  return {...target, ...s}..remove(r'$ref');
+}
+
+/// 스키마 전체의 값 제약을 `<위치> <키워드>` → 값으로 모은다.
+///
+/// - 위치는 `$.a.b`, 배열 원소는 `$.a.b[]`이다.
+/// - `if`/`then` 안의 제약은 `if(<조건 위치>) `·`then(<조건 위치>) ` 접두사를 붙인다.
+/// - 조건부 안에서는 구조 키워드를 뺀 모든 키를 모은다. 그 밖에서는 enum·type을 뺀
+///   값 제약만 모은다.
+Map<String, Object?> _schemaConstraints(Map<String, Object?> root) {
+  const valueKeywords = {
+    'required',
+    'const',
+    'minimum',
+    'maximum',
+    'minLength',
+    'minItems',
+    'uniqueItems',
+    'pattern',
+    'format',
+  };
+  const structural = {
+    'properties',
+    'items',
+    'if',
+    'then',
+    'description',
+    'additionalProperties',
+  };
+  final out = <String, Object?>{};
+  void walk(Map<String, Object?> s, String path, String ctx) {
+    s = _resolveRef(root, s);
+    for (final MapEntry(:key, :value) in s.entries) {
+      final record = ctx.isEmpty
+          ? valueKeywords.contains(key)
+          : !structural.contains(key);
+      if (record) out['$ctx$path $key'] = value;
+    }
+    if (s['properties'] case final Map<String, Object?> props) {
+      for (final MapEntry(:key, :value) in props.entries) {
+        walk(value! as Map<String, Object?>, '$path.$key', ctx);
+      }
+    }
+    if (s['items'] case final Map<String, Object?> items) {
+      walk(items, '$path[]', ctx);
+    }
+    for (final k in ['if', 'then']) {
+      if (s[k] case final Map<String, Object?> branch) {
+        expect(ctx, isEmpty, reason: '$path: 중첩된 if/then 미지원');
+        walk(branch, path, '$k($path) ');
+      }
+    }
+  }
+
+  walk(root, r'$', '');
   return out;
 }
 

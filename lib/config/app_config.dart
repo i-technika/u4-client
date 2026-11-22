@@ -724,9 +724,12 @@ class _Reader {
     return v;
   }
 
-  /// 스키마 `$defs.ms`(0 이상의 정수)
+  /// 스키마 `$defs.ms`(0 이상 1시간 이하의 정수).
+  ///
+  /// 상한이 없으면 큰 값에서 `Duration`의 마이크로초 계산이 int64를 넘어
+  /// 음수 지연이 된다 (#5 리뷰 R1).
   Duration millis(String key, int fallback) =>
-      Duration(milliseconds: integer(key, fallback, min: 0));
+      Duration(milliseconds: integer(key, fallback, min: 0, max: 3600000));
 
   /// [fallback]이 없으면 필수 값이다. [minLength]는 스키마의 `minLength`다.
   /// 스키마처럼 UTF-16 단위가 아닌 code point 수로 센다.
@@ -753,7 +756,9 @@ class _Reader {
     final v = string(key);
     final u = _parseUri(key, v);
     if (!_httpUrlPattern.hasMatch(v)) {
-      throw AppConfigException('$_path.$key: http 또는 https URL이어야 합니다 ($v)');
+      throw AppConfigException(
+        '$_path.$key: http 또는 https URL이어야 합니다 (${jsonEncode(v)})',
+      );
     }
     return u;
   }
@@ -763,30 +768,39 @@ class _Reader {
     return v == null ? null : _parseUri(key, v);
   }
 
-  /// 문자열 배열. [unique]는 스키마의 `uniqueItems`다.
-  List<String> strings(String key, {bool unique = false}) {
+  List<String> strings(String key) {
     final v = _get<List<Object?>>(key, 'array');
     if (v == null) return const [];
+    return List.unmodifiable(
+      v.map((e) {
+        if (e is! String) throw _type(key, 'string 배열');
+        return e;
+      }),
+    );
+  }
+
+  /// 스키마 `uniqueItems`. 원소 형식·enum 검사 뒤에 불러 중복이 원소 오류를
+  /// 가리지 않게 한다 (`["bogus", "bogus"]`는 "알 수 없는 값"으로 알린다).
+  void _rejectDuplicates(String key, List<String> list) {
     final seen = <String>{};
-    return List.unmodifiable([
-      for (final (i, e) in v.indexed)
-        if (e is! String)
-          throw _type(key, 'string 배열')
-        else if (unique && !seen.add(e))
-          throw AppConfigException('$_path.$key[$i]: 중복된 값 ($e)')
-        else
-          e,
-    ]);
+    for (final (i, e) in list.indexed) {
+      if (!seen.add(e)) {
+        throw AppConfigException('$_path.$key[$i]: 중복된 값 (${jsonEncode(e)})');
+      }
+    }
   }
 
   /// 스키마 `$defs.hostPattern` 원소의 중복 없는 배열 (예: `*.example.com:8080`).
   List<String> hosts(String key) {
-    final v = strings(key, unique: true);
+    final v = strings(key);
     for (final (i, h) in v.indexed) {
       if (!_hostPattern.hasMatch(h)) {
-        throw AppConfigException('$_path.$key[$i]: 호스트 형식 오류 ($h)');
+        throw AppConfigException(
+          '$_path.$key[$i]: 호스트 형식 오류 (${jsonEncode(h)})',
+        );
       }
     }
+    _rejectDuplicates(key, v);
     return v;
   }
 
@@ -814,16 +828,21 @@ class _Reader {
     List<T> values, {
     bool unique = false,
   }) {
-    return List.unmodifiable(
-      strings(key, unique: unique).map((s) => _match(key, values, s, null)),
+    final raw = strings(key);
+    final result = List<T>.unmodifiable(
+      raw.map((s) => _match(key, values, s, null)),
     );
+    if (unique) _rejectDuplicates(key, raw);
+    return result;
   }
 
   Color? color(String key) {
     final v = optString(key);
     if (v == null) return null;
     final hex = _colorPattern.firstMatch(v)?.group(1);
-    if (hex == null) throw AppConfigException('$_path.$key: 색상 형식 오류 ($v)');
+    if (hex == null) {
+      throw AppConfigException('$_path.$key: 색상 형식 오류 (${jsonEncode(v)})');
+    }
     return Color(int.parse(hex.length == 6 ? 'FF$hex' : hex, radix: 16));
   }
 
@@ -845,7 +864,7 @@ class _Reader {
   Uri _parseUri(String key, String v) {
     final u = Uri.tryParse(v);
     if (u == null || !u.hasScheme || u.host.isEmpty) {
-      throw AppConfigException('$_path.$key: URL 형식 오류 ($v)');
+      throw AppConfigException('$_path.$key: URL 형식 오류 (${jsonEncode(v)})');
     }
     return u;
   }
