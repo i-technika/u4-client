@@ -189,14 +189,14 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
   - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류를 포함해 모든 설정 오류에 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 모르는 키와 스키마·모델 일치(#4), 범위·형식 제약과 스키마 일치(#5), 확인 화면과 설정 실패 화면 위젯 테스트(69개).
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 모르는 키와 스키마·모델 일치(#4), 범위·형식 제약과 스키마 일치(#5), 확인 화면과 설정 실패 화면 위젯 테스트(70개).
 
 ## 6. 확인 결과
 
 | 항목 | 결과 |
 |---|---|
 | `flutter analyze` | 이슈 없음 |
-| `flutter test` | 69개 통과 (#5 반영 후) |
+| `flutter test` | 70개 통과 (#5 반영 후) |
 | `flutter build apk --debug --flavor dev` / `stg` | 성공 |
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |
