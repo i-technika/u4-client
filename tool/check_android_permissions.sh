@@ -2,7 +2,7 @@
 # 빌드한 APK의 최종 권한(병합된 매니페스트)에 금지 권한이 없는지 검사한다 (#36).
 # 금지 목록은 tool/android_forbidden_permissions.txt. 소스 매니페스트 검사(flutter test)로는
 # 플러그인을 추가·업데이트해서 새로 들어온 권한을 잡을 수 없어서 APK를 직접 본다.
-# Sub-issue Linux CI(dev debug)와 Milestone Full CI(전 flavor release APK)가 같이 쓴다.
+# Sub-issue Linux CI(dev·prod debug)와 Milestone Full CI(전 flavor release APK)가 같이 쓴다.
 # AAB는 aapt2가 읽지 못해 아직 검사하지 않는다 (docs/phase-1-setup.md 3장).
 #
 # 실행: bash tool/check_android_permissions.sh <apk>... (bash 3.2 이상, 경로는 현재 위치 기준)

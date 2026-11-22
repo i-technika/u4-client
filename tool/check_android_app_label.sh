@@ -69,23 +69,44 @@ flavor_of() {
 # - application-label:'…'         앱 기본 라벨
 # - application-label-<로캘>:'…'  로캘별 라벨. 앱이나 라이브러리 리소스에 있는 로캘마다 나온다
 #                                 (라벨이 리터럴이면 모두 기본 라벨과 같다)
-# - launchable-activity: … label='…' icon='…'           런처 activity 라벨. 비어 있으면 앱 라벨을 쓴다
-# - leanback-launchable-activity: … label='…' icon='…'  TV 런처 activity 라벨 (지금은 없다)
+# - launchable-activity: name='…'  label='…' icon='…'
+#     런처 activity 라벨. 비어 있으면 앱 라벨을 쓴다
+# - leanback-launchable-activity: name='…'  label='…' icon='…' banner='…'
+#     TV 런처 activity 라벨 (지금은 없다)
 # application: label='…' 줄은 application-label과 같은 값이라 보지 않는다.
-# 값 안의 '는 aapt2가 이스케이프하지 않으므로, 줄 끝(또는 icon=) 직전의 '까지를 값으로 본다.
+# 값 안의 '는 aapt2가 이스케이프하지 않는다. 클래스 이름에는 '가 없으므로 name='…' 뒤의 label='부터
+# 줄 끝(또는 icon=) 직전의 '까지를 값으로 본다. 값에 label='·icon='이 있어도 자르지 않는다.
 # Windows용 aapt2의 CRLF는 줄 끝에서만 지운다 (값 안의 CR은 그대로 둔다).
+crlf_to_lf() {
+  awk '{ sub(/\r$/, ""); print }'
+}
 label_values() {
-  awk '{ sub(/\r$/, ""); print }' | sed -n -E \
+  crlf_to_lf | sed -n -E \
     -e "s/^(application-label(-[^:]+)?):'(.*)'$/\1	\3/p" \
-    -e "s/^((leanback-)?launchable-activity):.*[[:space:]]label='(.*)'[[:space:]]+icon='[^']*'$/\1	\3/p"
+    -e "s/^((leanback-)?launchable-activity): name='[^']*'[[:space:]]+label='(.*)' icon='[^']*'( banner='[^']*')?$/\1	\3/p"
+}
+# 형식 검사용: label_values가 읽어야 할 줄(줄 머리만 보고 고른다)
+label_heads() {
+  crlf_to_lf | grep -E '^(application-label(-[^:]+)?:|(leanback-)?launchable-activity:)' || true
 }
 
 # 덤프 하나를 판정한다. 통과하면 0, 아니면 1을 돌려주고 이유를 표준 오류에 쓴다.
 # $1: 표시 이름, $2: aapt2 dump badging 출력, $3: 기대 라벨(badging 표기)
 check_dump() {
   local label="$1" dump="$2" want="$3"
-  local values bad key
-  values=$(printf '%s\n' "$dump" | label_values)
+  local values heads bad key
+  # 호출하는 쪽이 ||로 받아 set -e가 꺼지므로 실패를 직접 확인한다.
+  if ! values=$(printf '%s\n' "$dump" | label_values) || ! heads=$(printf '%s\n' "$dump" | label_heads); then
+    echo "$label: badging에서 라벨 줄을 읽는 중 실패했습니다" >&2
+    return 1
+  fi
+  # 라벨 줄 머리가 있는데 값을 읽지 못한 줄이 있으면 형식이 바뀐 것이다 (조용히 건너뛰지 않는다).
+  if [ "$(printf '%s\n' "$heads" | grep -c . || true)" -ne "$(printf '%s\n' "$values" | grep -c . || true)" ]; then
+    echo "$label: 값을 읽지 못한 라벨 줄이 있습니다 (aapt2 출력 형식이 바뀌었을 수 있음):" >&2
+    printf '%s\n' "$heads" | grep -E '^(leanback-)?launchable-activity:' >&2 || true
+    printf '%s\n' "$heads" | grep -vE "^(application-label(-[^:]+)?):'.*'$|launchable-activity:" | head -n 5 >&2 || true
+    return 1
+  fi
   # 기본 라벨과 런처 activity 줄은 반드시 있어야 한다. 없으면 출력 형식이 바뀐 것이다.
   for key in application-label launchable-activity; do
     if ! printf '%s\n' "$values" | grep -q "^$key	"; then
@@ -120,8 +141,11 @@ check_dump() {
 }
 
 # 판정 로직이 실제로 동작하는지 먼저 확인한다. 정상 덤프는 통과하고, 라벨이 하나라도 다르거나
-# 라벨 줄이 빠지면 이유를 밝히고 실패해야 한다. 이름에 '·"·탭·icon='이 있어도 값을 끝까지 읽어야 한다.
-# 덤프 형식은 aapt2 2.20(build-tools 37.0.0) 출력을 따른다.
+# 라벨 줄이 빠지거나 값을 읽을 수 없으면 이유를 밝히고 실패해야 한다.
+# 이름에 '·"·탭·CR·label='·icon='이 있어도 파서가 값을 자르지 않는지 본다 (그런 이름이 실제 빌드에서
+# 그대로 남는다는 뜻은 아니다. aapt2가 바꾸면 불일치로 실패한다).
+# 덤프 형식은 aapt2 2.20(build-tools 37.0.0) 출력을 따른다. leanback 줄 형식은 TV activity가 있는
+# 매니페스트를 aapt2 link로 만들어 확인했다.
 self_test_fail() {
   echo "자기검사 실패: $1" >&2
   [ -z "${2:-}" ] || printf '%s\n' "$2" >&2
@@ -154,20 +178,27 @@ expect_fail() {
 N="U4 it's \\\"DEV\\\""
 TAB_N="U4	DEV"
 ICON_N="U4' icon='x"
+LABEL_N="U4 label='DEV"
 CR_N=$(printf 'U4\rDEV')
 MISMATCH="런처 이름이 설정 JSON의 app.name과 다릅니다"
-LEANBACK="leanback-launchable-activity: name='com.itechnika.u4.TvActivity'  label='U4' icon=''"
+leanback() { printf "leanback-launchable-activity: name='com.itechnika.u4.TvActivity'  label='%s' icon='' banner=''" "$1"; }
+FORMAT="값을 읽지 못한 라벨 줄이 있습니다"
 expect_pass "activity 라벨이 빈" "$(fixture_dump "$N" "$N" "")" "$N"
 expect_pass "activity 라벨이 같은" "$(fixture_dump "$N" "$N" "$N")" "$N"
 expect_pass "CRLF" "$(fixture_dump "$N" "$N" "" | awk '{ printf "%s\r\n", $0 }')" "$N"
 expect_pass "이름에 탭이 있는" "$(fixture_dump "$TAB_N" "$TAB_N" "$TAB_N")" "$TAB_N"
 expect_pass "이름에 icon='이 있는" "$(fixture_dump "$ICON_N" "$ICON_N" "$ICON_N")" "$ICON_N"
 expect_pass "이름 안에 CR이 있는" "$(fixture_dump "$CR_N" "$CR_N" "")" "$CR_N"
+expect_pass "이름에 label='이 있는" "$(fixture_dump "$LABEL_N" "$LABEL_N" "$LABEL_N" "$(leanback "$LABEL_N")")" "$LABEL_N"
+expect_pass "TV activity 라벨이 같은" "$(fixture_dump "$N" "$N" "" "$(leanback "$N")")" "$N"
 expect_fail "기본 라벨이 다른" "$(fixture_dump "U4" "$N" "")" "$N" "$MISMATCH"
 expect_fail "기본 라벨 끝이 잘린" "$(fixture_dump "U4 it's \\\"DEV" "$N" "")" "$N" "$MISMATCH"
 expect_fail "로캘 라벨이 다른" "$(fixture_dump "$N" "U4" "")" "$N" "$MISMATCH"
 expect_fail "activity 라벨이 다른" "$(fixture_dump "$N" "$N" "U4")" "$N" "$MISMATCH"
-expect_fail "TV activity 라벨이 다른" "$(fixture_dump "$N" "$N" "" "$LEANBACK")" "$N" "$MISMATCH"
+expect_fail "TV activity 라벨이 다른" "$(fixture_dump "$N" "$N" "" "$(leanback "U4")")" "$N" "$MISMATCH"
+expect_fail "activity 라벨이 접두만 다른" "$(fixture_dump "$N" "$N" "Z label='$N")" "$N" "$MISMATCH"
+expect_fail "activity 줄 끝에 모르는 속성이 있는" "$(fixture_dump "$N" "$N" "" "launchable-activity: name='a.B'  label='$N' icon='' extra=''")" "$N" "$FORMAT"
+expect_fail "기본 라벨 따옴표가 바뀐" "$(fixture_dump "$N" "$N" "" "application-label-fr:\"$N\"")" "$N" "$FORMAT"
 expect_fail "탭 뒤가 다른" "$(fixture_dump "U4	STG" "$TAB_N" "")" "$TAB_N" "$MISMATCH"
 expect_fail "숫자 표기만 같은" "$(fixture_dump "1e3" "1e3" "")" "1000" "$MISMATCH"
 expect_fail "뒤 공백만 다른" "$(fixture_dump "12" "12" "")" "12 " "$MISMATCH"

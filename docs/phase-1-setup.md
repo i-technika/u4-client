@@ -83,11 +83,12 @@
   - `test/app_display_name_test.dart`가 연결이 끊기는 경우를 잡는다.
     - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다.
     - iOS: `AppInfo.xcconfig` 값이 prod `app.name`과 같은지, Debug·Release xcconfig, Xcode 프로젝트, 지역화 `InfoPlist.strings`가 이름을 덮어쓰지 않는지.
-  - CI가 빌드한 APK의 런처 이름을 JSON과 비교한다 (#39). `tool/check_android_app_label.sh`가 `aapt2 dump badging`에서 `application-label`, 로캘별 `application-label-<로캘>`(리소스에 있는 로캘마다 나온다), `launchable-activity`·`leanback-launchable-activity`의 `label`을 읽어 APK 파일 이름(`app-<flavor>-<buildType>.apk`)의 flavor JSON `app.name`과 비교한다. 하나라도 다르거나 기본 라벨·`launchable-activity` 줄을 찾지 못하면 기대값·실제값을 출력하고 실패한다.
+  - CI가 빌드한 APK의 런처 이름을 JSON과 비교한다 (#39). `tool/check_android_app_label.sh`가 `aapt2 dump badging`에서 `application-label`, 로캘별 `application-label-<로캘>`(리소스에 있는 로캘마다 나온다), `launchable-activity`·`leanback-launchable-activity`의 `label`을 읽어 APK 파일 이름(`app-<flavor>-<buildType>.apk`)의 flavor JSON `app.name`과 비교한다. 값이 하나라도 다르면 기대값·실제값을 출력하고 실패한다. 기본 라벨·`launchable-activity` 줄이 없거나, 라벨 줄인데 값을 읽지 못한 줄(출력 형식 변화)이 있으면 관련 덤프 줄을 출력하고 실패한다.
     - activity 라벨이 비어 있으면 앱 라벨을 물려받으므로 통과로 본다. 속성이 없는 것과 `android:label=""`은 badging으로 구분되지 않는데, 후자는 위 정적 테스트가 막는다. `application: label=` 줄은 `application-label`과 같은 값이라 보지 않는다.
     - Sub-issue Linux CI는 dev·prod debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. stg만 달라지는 회귀는 Milestone Full CI에서 드러난다.
     - aapt2는 라벨을 출력할 때 `\`·`"`·줄바꿈만 이스케이프한다(탭 등은 그대로). 기대값도 같은 표기로 바꿔 문자열로 비교하고, 실패 메시지의 기대·실제 값도 이 표기다. aapt2가 매니페스트 문자열을 처리하며 공백 등을 바꾸면 런처 이름이 JSON과 실제로 다른 것이므로 실패로 본다.
-    - 판정 로직은 매번 내장 fixture로 먼저 확인한다. 정상 덤프(이름에 `'`·`"`·탭·CR·`icon='` 포함, CRLF 출력)는 통과하고, 라벨 하나가 다르거나(로캘·TV activity 포함, 숫자 표기·뒤 공백만 다른 경우 포함) 라벨 줄이 빠진 덤프는 실패해야 한다. JSON → aapt2 표기 변환과 파일 이름 → flavor 변환도 같이 확인한다.
+    - 판정 로직은 매번 내장 fixture로 먼저 확인한다. 정상 덤프(이름에 `'`·`"`·탭·CR·`label='`·`icon='` 포함, CRLF 출력, `banner=`가 붙은 TV activity 줄)는 통과하고, 라벨 하나가 다르거나(로캘·TV activity 포함, 숫자 표기·뒤 공백만 다른 경우 포함) 라벨 줄이 빠지거나 값을 읽을 수 없는 덤프는 실패해야 한다. JSON → aapt2 표기 변환과 파일 이름 → flavor 변환도 같이 확인한다.
+      - 탭·CR 등이 든 이름은 파서가 값을 자르지 않는지 보려는 것이다. 그런 이름이 실제 빌드에서 그대로 남는다는 뜻은 아니다(매니페스트에 리터럴 탭을 쓰면 aapt2가 공백으로 바꾼다). 바뀌면 불일치로 실패한다.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
 - 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
 - 세 설정 파일은 모두 asset으로 번들된다. 비밀 값이 없어서 그렇게 했지만, 설정에 민감한 값이 들어가게 되면 flavor별 asset으로 나눠야 한다.
@@ -109,7 +110,7 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
     - 매니페스트 테스트(`test/app_config_test.dart`)가 main의 제거 선언(`tools:selector` 없이)과, 다른 source set이나 `uses-permission-sdk-23`으로 다시 선언하지 않는지를 검사한다.
     - 플러그인을 추가하거나 업데이트해서 새로 들어오는 권한은 병합 결과에서만 드러나므로, CI가 빌드한 APK도 검사한다 (#36). `tool/check_android_permissions.sh`가 `aapt2 dump permissions`로 APK의 최종 권한을 읽는다. 금지 권한(`'android.permission.X'`)이 앱이 정의하는 `permission:` 줄 말고 어느 줄에든 나오면 CI가 실패한다. 줄 형식(`uses-permission`, `uses-permission-sdk-23`, 새 태그)에 기대지 않는다.
       - 금지 목록의 원본은 `tool/android_forbidden_permissions.txt`이고, 매니페스트 테스트도 이 파일을 읽는다. 내용은 Dart 테스트와 fixture가 고정하므로, 바꿀 때 함께 고칠 곳은 파일 주석에 적었다.
-      - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. **AAB는 aapt2로 읽을 수 없어 아직 검사하지 않는다.** 15단계(출시 준비)에서 AAB를 빌드하게 되면 `bundletool`로 검사를 넓혀야 한다 (#45). 금지 목록 밖의 새 권한을 막는 허용 목록 검사는 #46에서 다룬다.
+      - Sub-issue Linux CI는 dev·prod debug APK를(#39에서 prod 추가), Milestone Full CI는 dev·stg·prod release APK를 검사한다. **AAB는 aapt2로 읽을 수 없어 아직 검사하지 않는다.** 15단계(출시 준비)에서 AAB를 빌드하게 되면 `bundletool`로 검사를 넓혀야 한다 (#45). 금지 목록 밖의 새 권한을 막는 허용 목록 검사는 #46에서 다룬다.
       - 덤프를 제대로 읽었는지도 본다. INTERNET·POST_NOTIFICATIONS가 보이는지, `uses-permission`·`uses-permission-sdk-23` 줄마다 이름을 읽었는지 확인한다.
       - 판정 로직은 매번 fixture(`tool/fixtures/aapt2_permissions_*.txt`)로 먼저 확인한다. 금지 fixture(모르는 태그 줄 포함)는 금지 권한 5개만 찾아 실패해야 하고, 정상 fixture는 통과해야 한다. 빈 덤프와 이름을 읽을 수 없는 줄도 실패해야 한다.
       - 이 검사만 잡을 수 있는 경우는 주로 라이브러리가 **`<uses-permission-sdk-23>`** 으로 넣는 권한이다. main의 `<uses-permission tools:node="remove">`는 같은 태그만 지운다. 일반 `<uses-permission>`은 이미 제거된다. 제거 선언을 지우는 회귀는 매니페스트 테스트도 잡는다(Sub-issue CI에서는 테스트가 먼저 돌고, Full CI에서는 두 job이 병렬로 돈다).
