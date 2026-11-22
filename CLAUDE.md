@@ -27,7 +27,7 @@
 - `docs/`: 단계별 설계·결정 문서 (`phase-0-requirements.md`, `phase-1-setup.md`, ...)
 - `test/`: Dart 테스트. 공용 도구는 `test/helpers.dart` (#10에서 추가)
 - `test-page/`: 단계별 검증용 기능 테스트 HTML 페이지 (실행 방법은 README)
-- `tool/`: CI 보조 스크립트 (`validate_config.sh`: 설정 스키마 검증, #4)
+- `tool/`: CI 보조 스크립트 (`validate_config.sh`: 설정 스키마 검증, #4 / `check_ios_flavors.sh`: iOS flavor별 실제 bundle ID·앱 이름 확인, macOS 전용, #38)
 - `android/`, `ios/`
 
 ## 3. 코딩 원칙
@@ -41,6 +41,7 @@
 - Flutter SDK가 시스템 PATH에 없을 수 있다. `flutter`를 찾지 못하면 Bash에서
   `export PATH="/c/Users/fmthead/develop/flutter/bin:$PATH"` 후 실행한다.
 - adb: `/c/Users/fmthead/AppData/Local/Android/Sdk/platform-tools/adb.exe`
+- macOS(iOS 작업): Flutter 3.50.0은 `~/develop/flutter-3.50.0`에 있다(`~/flutter`는 다른 버전). `export PATH="$HOME/develop/flutter-3.50.0/bin:$PATH"` 후 실행한다. Android SDK는 `~/Library/Android/sdk`.
 - GitHub CLI(`gh`)로 이슈/PR/프로젝트를 관리한다. 저장소: `i-technika/u4-client`
 - `gh`에 여러 줄 본문을 넘길 때는 셸 이스케이프 깨짐을 막기 위해 **반드시 임시 파일 + `--body-file`** 을 사용한다.
 - Python으로 한글을 출력할 때는 `python -I -X utf8`을 쓴다 (`-I`는 `PYTHONIOENCODING`을 무시한다).

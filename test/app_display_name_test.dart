@@ -91,22 +91,33 @@ void main() {
         expect(settings['PRODUCT_BUNDLE_IDENTIFIER'], _androidApplicationId(f));
       });
 
+      test('AppInfo-$f.xcconfig는 두 값만 정한다 (include·조건부 키 없음)', () {
+        // #include로 다른 flavor 값을 끌어오거나 APP_DISPLAY_NAME[sdk=iphoneos*]처럼
+        // 실기기에서만 다른 값을 쓰는 것을 막는다.
+        final lines = File('ios/Flutter/AppInfo-$f.xcconfig')
+            .readAsLinesSync()
+            .map((l) => l.split('//').first.trim())
+            .where((l) => l.isNotEmpty)
+            .map((l) => l.split('=').first.trim());
+        expect(
+          lines,
+          unorderedEquals(['PRODUCT_BUNDLE_IDENTIFIER', 'APP_DISPLAY_NAME']),
+        );
+      });
+
       for (final mode in modes) {
-        test('$mode-$f.xcconfig는 $f의 AppInfo와 Pods 설정만 포함하고 값을 덮어쓰지 않는다', () {
+        test('$mode-$f.xcconfig는 Pods·Generated·$f AppInfo만 이 순서로 포함한다', () {
+          // 값을 직접 정하지 않는다(조건부 키 포함). AppInfo를 마지막에 두어 앞의 설정이 덮지 못하게 한다.
           final lines = File('ios/Flutter/$mode-$f.xcconfig')
               .readAsLinesSync()
               .map((l) => l.split('//').first.trim())
-              .where((l) => l.isNotEmpty)
-              .toList();
-          expect(lines.where((l) => l.contains('AppInfo')), [
-            '#include "AppInfo-$f.xcconfig"',
-          ]);
-          expect(lines.where((l) => l.contains('Pods-Runner')), [
+              .where((l) => l.isNotEmpty);
+          expect(lines, [
             '#include? "Pods/Target Support Files/Pods-Runner/'
                 'Pods-Runner.${mode.toLowerCase()}-$f.xcconfig"',
+            '#include "Generated.xcconfig"',
+            '#include "AppInfo-$f.xcconfig"',
           ]);
-          // APP_DISPLAY_NAME[sdk=...] 같은 조건부 정의도 막는다.
-          expect(lines.where((l) => !l.startsWith('#')), isEmpty);
         });
       }
 
@@ -133,7 +144,9 @@ void main() {
     test('scheme은 dev·stg·prod뿐이다 (flavor 없는 Runner scheme을 두지 않는다)', () {
       final schemes = Directory('ios/Runner.xcodeproj/xcshareddata/xcschemes')
           .listSync()
-          .map((e) => e.uri.pathSegments.last);
+          .map((e) => e.uri.pathSegments.last)
+          // Finder가 만드는 .DS_Store 등은 scheme이 아니다.
+          .where((name) => name.endsWith('.xcscheme'));
       expect(
         schemes,
         unorderedEquals(['dev.xcscheme', 'stg.xcscheme', 'prod.xcscheme']),
@@ -176,10 +189,12 @@ void main() {
 
       test('APP_DISPLAY_NAME과 앱 bundle ID를 덮어쓰지 않는다', () {
         expect(pbxproj, isNot(contains('APP_DISPLAY_NAME')));
-        // RunnerTests의 bundle ID만 남는다.
-        final ids = RegExp(r'PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);')
+        // RunnerTests의 bundle ID만 남는다. Xcode가 쓰는 조건부 키
+        // ("PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = ...)도 함께 센다.
+        final ids = RegExp(r'"?PRODUCT_BUNDLE_IDENTIFIER[^=]*=\s*([^;]+);')
             .allMatches(pbxproj)
-            .map((m) => m[1]);
+            .map((m) => m[1]!.trim());
+        expect(ids, hasLength(9)); // RunnerTests configuration 9개
         expect(ids, everyElement('com.itechnika.u4.RunnerTests'));
       });
     });

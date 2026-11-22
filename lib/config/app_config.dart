@@ -199,9 +199,15 @@ enum Flavor {
   /// Android(`productFlavors`)와 iOS(scheme `dev`/`stg`/`prod`) 모두 `--flavor`로 정하고,
   /// Flutter가 그 값을 [appFlavor]로 넘긴다 (#38). release 빌드에서 flavor가 없으면 실패한다.
   ///
-  /// 예전 iOS용 `--dart-define=FLAVOR=`는 더 읽지 않는다. 남겨 두면 `--flavor`(bundle ID·앱 이름)와
-  /// 다른 flavor 설정을 읽는 빌드를 만들 수 있다.
+  /// 예전 iOS용 `--dart-define=FLAVOR=`는 더 쓰지 않는다. 남겨 두면 `--flavor`(bundle ID·앱 이름)와
+  /// 다른 flavor 설정을 읽는 빌드를 만들 수 있다. 습관대로 넘기면 조용히 무시하지 않고 실패한다.
   static Flavor get current {
+    const legacy = String.fromEnvironment('FLAVOR');
+    if (legacy.isNotEmpty) {
+      throw const AppConfigException(
+        '--dart-define=FLAVOR=$legacy는 더 쓰지 않습니다. --flavor $legacy를 쓰세요',
+      );
+    }
     final name = appFlavor;
     if (name == null) {
       if (kReleaseMode) {

@@ -68,7 +68,8 @@
 | iOS scheme / build configuration | `dev` / `Debug-dev`·`Release-dev`·`Profile-dev` | `stg` / `*-stg` | `prod` / `*-prod` |
 | versionName | `pubspec.yaml`의 `version`과 같음 | 같음 | 같음 |
 | 설정 파일 | `config/app_config.dev.json` | `config/app_config.stg.json` | `config/app_config.prod.json` |
-| HTTP(cleartext) | 허용 | 차단 | 차단 |
+| Android HTTP(cleartext) | 허용 | 차단 | 차단 |
+| iOS HTTP(ATS) | 로컬 네트워크만 허용 | 같음 | 같음 |
 
 - 앱 ID와 앱 이름은 임시값이다(0단계 문서 5장 "확인이 필요한 사항").
 - Android는 `productFlavors`, iOS는 scheme과 build configuration으로 나눠, 세 flavor를 한 기기에 함께 설치할 수 있다.
@@ -99,6 +100,8 @@ Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 
   - `AppInfo-<flavor>.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER`와 `APP_DISPLAY_NAME`. Xcode 프로젝트(`project.pbxproj`)는 Runner의 bundle ID를 정하지 않는다.
 - `ios/Podfile`의 `project` 매핑에 9개 configuration을 모두 적는다. 새 configuration을 만들면 같이 고친다.
 - Xcode에서 scheme이나 configuration을 추가·복제하면 `test/app_display_name_test.dart`가 목록·xcconfig 연결이 어긋난 것을 잡는다.
+- 파일 검사로 못 잡는 덮어쓰기(Signing 탭에서 bundle ID 수정 등)는 `tool/check_ios_flavors.sh`가 `xcodebuild -showBuildSettings`의 최종 값으로 잡는다. Milestone Full CI의 iOS job이 실행한다.
+- 실기기 설치용 서명(Team, flavor별 App ID·프로비저닝)은 아직 정하지 않았다. M1 종료 전 실기기 점검(#16) 때 정한다.
 
 ## 3. Android 설정
 

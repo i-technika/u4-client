@@ -113,7 +113,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # 9개 configuration·3개 scheme에서 Xcode가 실제로 적용하는 bundle ID·앱 이름을 확인한다 (#38).
+      # 빌드는 오래 걸리므로 하지 않고 xcodebuild -showBuildSettings로 본다.
+      - name: Check iOS flavor build settings
+        run: bash tool/check_ios_flavors.sh
+
       # iOS도 scheme(dev/stg/prod)으로 flavor를 고른다 (#38, docs/phase-1-setup.md 2장).
-      # flavor별 xcconfig·scheme 구성은 test/app_display_name_test.dart가 검사하므로 prod만 빌드한다.
+      # flavor별 값은 위 단계가 확인하므로 실제 빌드는 prod만 한다.
       - name: Build iOS (No CodeSign, prod)
         run: flutter build ios --release --no-codesign --flavor prod
