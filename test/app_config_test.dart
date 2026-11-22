@@ -420,6 +420,295 @@ void main() {
       expect(files, Flavor.values.map((f) => f.assetPath).toSet());
     });
   });
+
+  group('범위·형식 (#5)', () {
+    final schema = jsonDecode(
+      File('config/app_config.schema.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    final fields = _schemaFields(schema);
+
+    /// 최소 dev 설정에서 [path](`$` 다음 키들)의 값만 [value]로 바꾼다.
+    Map<String, Object?> withValue(List<String> path, Object? value) {
+      final json = jsonDecode(
+        jsonEncode({
+          'flavor': 'dev',
+          'app': {
+            'name': 'Test',
+            'startUrl': 'https://example.com/',
+            'allowedHosts': ['example.com'],
+          },
+        }),
+      ) as Map<String, Object?>;
+      var map = json;
+      for (final k in path.take(path.length - 1)) {
+        map =
+            map.putIfAbsent(k, () => <String, Object?>{})!
+                as Map<String, Object?>;
+      }
+      map[path.last] = value;
+      return json;
+    }
+
+    String pathOf(List<String> path) => '\$.${path.join('.')}';
+
+    Matcher throwsAt(String path) => throwsA(
+      isA<AppConfigException>().having(
+        (e) => e.message,
+        'message',
+        startsWith('$path: '),
+      ),
+    );
+
+    test('이슈 재현: maxDepth 0과 maxWaitMs -1은 로딩 단계에서 실패한다', () {
+      expect(
+        () => AppConfig.fromJson(withValue(['popup', 'maxDepth'], 0)),
+        _throwsConfigError(r'$.popup.maxDepth: 1 이상 10 이하여야 합니다 (0)'),
+      );
+      expect(
+        () => AppConfig.fromJson(withValue(['splash', 'maxWaitMs'], -1)),
+        _throwsConfigError(r'$.splash.maxWaitMs: 0 이상이어야 합니다 (-1)'),
+      );
+    });
+
+    test('스키마의 minimum·maximum 경계를 로더도 똑같이 검사한다', () {
+      final ranged = fields.where(
+        (f) =>
+            f.schema.containsKey('minimum') || f.schema.containsKey('maximum'),
+      );
+      // ms 4개 + maxDepth + maxAttempts. 순회가 필드를 놓치는 회귀 방지.
+      expect(ranged.map((f) => pathOf(f.path)), hasLength(6));
+      for (final f in ranged) {
+        final where = pathOf(f.path);
+        expect(f.schema['type'], 'integer', reason: where);
+        for (final (bound, step) in [('minimum', -1), ('maximum', 1)]) {
+          final limit = f.schema[bound] as int?;
+          if (limit == null) continue;
+          expect(
+            () => AppConfig.fromJson(withValue(f.path, limit)),
+            returnsNormally,
+            reason: '$where = $limit',
+          );
+          expect(
+            () => AppConfig.fromJson(withValue(f.path, limit + step)),
+            throwsAt(where),
+            reason: '$where = ${limit + step}',
+          );
+        }
+      }
+    });
+
+    test('uniqueItems 배열은 중복을 거부하고, 아닌 배열은 허용한다', () {
+      final arrays = fields.where((f) => f.schema['type'] == 'array').toList();
+      expect(arrays, hasLength(4));
+      for (final f in arrays) {
+        final where = pathOf(f.path);
+        final items = f.items!;
+        final sample = switch (items) {
+          {'enum': [final first, ...]} => first,
+          {'pattern': final _} => 'example.com',
+          _ => fail('$where: 원소 샘플 값을 정할 수 없습니다'),
+        };
+        final json = withValue(f.path, [sample, sample]);
+        if (f.schema['uniqueItems'] == true) {
+          expect(
+            () => AppConfig.fromJson(json),
+            _throwsConfigError('$where[1]: 중복된 값 ($sample)'),
+          );
+        } else {
+          expect(
+            () => AppConfig.fromJson(json),
+            returnsNormally,
+            reason: where,
+          );
+        }
+      }
+    });
+
+    test('requestOnLaunch 중복은 권한 목록을 만들기 전에 실패한다', () {
+      expect(
+        () => AppConfig.fromJson(
+          withValue(['permissions', 'requestOnLaunch'], ['camera', 'camera']),
+        ),
+        _throwsConfigError(r'$.permissions.requestOnLaunch[1]: 중복된 값 (camera)'),
+      );
+    });
+
+    test('startUrl은 소문자 http·https로 시작해야 한다 (모든 flavor)', () {
+      for (final url in [
+        'ftp://example.com/',
+        'file://example.com/a',
+        'HTTPS://example.com/',
+        'wss://example.com/',
+      ]) {
+        expect(
+          () => AppConfig.fromJson(withValue(['app', 'startUrl'], url)),
+          _throwsConfigError(
+            '\$.app.startUrl: http 또는 https URL이어야 합니다 ($url)',
+          ),
+          reason: url,
+        );
+      }
+      for (final url in ['http://localhost:8080/', 'https://example.com/a']) {
+        expect(
+          AppConfig.fromJson(withValue(['app', 'startUrl'], url)).app.startUrl,
+          Uri.parse(url),
+        );
+      }
+    });
+
+    test('호스트 목록은 hostPattern을 따른다', () {
+      final hostLists = fields.where(
+        (f) => f.items?['pattern'] == AppConfig.schemaPatterns.host,
+      );
+      expect(hostLists, hasLength(3));
+      for (final f in hostLists) {
+        final where = pathOf(f.path);
+        for (final ok in ['example.com', '*.example.com', 'localhost:8080']) {
+          expect(
+            () => AppConfig.fromJson(withValue(f.path, [ok])),
+            returnsNormally,
+            reason: '$where $ok',
+          );
+        }
+        for (final bad in [
+          'Example.com',
+          'https://example.com',
+          'example.com/',
+          '*example.com',
+          'a.*.example.com',
+          '',
+          'example..com',
+          '-example.com',
+          'example.com:123456',
+        ]) {
+          expect(
+            () => AppConfig.fromJson(withValue(f.path, ['example.com', bad])),
+            _throwsConfigError('$where[1]: 호스트 형식 오류 ($bad)'),
+            reason: '$where "$bad"',
+          );
+        }
+      }
+    });
+
+    test('minLength 문자열에 빈 문자열을 넣으면 실패한다', () {
+      final nonEmpty = fields.where((f) => f.schema.containsKey('minLength'));
+      expect(nonEmpty.map((f) => pathOf(f.path)), [r'$.app.name']);
+      for (final f in nonEmpty) {
+        expect(f.schema['minLength'], 1);
+        expect(
+          () => AppConfig.fromJson(withValue(f.path, '')),
+          _throwsConfigError('${pathOf(f.path)}: 빈 문자열은 쓸 수 없습니다'),
+        );
+      }
+    });
+
+    test('로더의 pattern 문자열이 스키마와 같다', () {
+      final defs = schema[r'$defs']! as Map<String, Object?>;
+      expect(
+        (defs['hostPattern']! as Map)['pattern'],
+        AppConfig.schemaPatterns.host,
+      );
+      expect(
+        (defs['color']! as Map)['pattern'],
+        AppConfig.schemaPatterns.color,
+      );
+      final startUrl = fields.singleWhere(
+        (f) => pathOf(f.path) == r'$.app.startUrl',
+      );
+      expect(startUrl.schema['pattern'], AppConfig.schemaPatterns.httpUrl);
+    });
+
+    test('스키마는 로더가 검사하는 키워드만 쓴다', () {
+      // 새 키워드(maxLength, exclusiveMinimum 등)를 쓰면 로더 검사를 함께 넣고
+      // 이 목록과 docs/phase-1-setup.md 5장을 고친다.
+      const supported = {
+        // 주석·메타데이터
+        r'$schema', r'$id', 'title', 'description', 'default',
+        // 구조
+        r'$defs', r'$ref', 'type', 'properties', 'additionalProperties',
+        'required', 'items', 'if', 'then',
+        // 값 제약
+        'enum', 'const', 'minimum', 'maximum', 'minLength', 'minItems',
+        'uniqueItems', 'pattern', 'format',
+      };
+      final used = <String>{};
+      final patterns = <String>{};
+      final formats = <String>{};
+      void walk(Object? node) {
+        if (node is! Map<String, Object?>) return;
+        used.addAll(node.keys);
+        if (node['pattern'] case final String p) patterns.add(p);
+        if (node['format'] case final String f) formats.add(f);
+        for (final k in ['items', 'if', 'then']) {
+          walk(node[k]);
+        }
+        for (final k in ['properties', r'$defs']) {
+          (node[k] as Map<String, Object?>?)?.values.forEach(walk);
+        }
+      }
+
+      walk(schema);
+      expect(used.difference(supported), isEmpty);
+      // prod의 `^https://`는 AppConfig._validate가 본다.
+      expect(patterns, {
+        AppConfig.schemaPatterns.host,
+        AppConfig.schemaPatterns.color,
+        AppConfig.schemaPatterns.httpUrl,
+        '^https://',
+      });
+      // uri는 로더가 scheme·host만 본다. 세부 문법은 CI가 검사한다.
+      expect(formats, {'uri'});
+    });
+  });
+}
+
+/// 스키마의 값 필드(object가 아닌 속성)와 경로. `$ref`는 풀어 둔다.
+List<
+  ({
+    List<String> path,
+    Map<String, Object?> schema,
+    Map<String, Object?>? items,
+  })
+>
+_schemaFields(Map<String, Object?> root) {
+  final defs = root[r'$defs']! as Map<String, Object?>;
+  Map<String, Object?> resolve(Map<String, Object?> s) {
+    final ref = s[r'$ref'];
+    if (ref is! String) return s;
+    final target = resolve(
+      defs[ref.substring(r'#/$defs/'.length)]! as Map<String, Object?>,
+    );
+    // `$ref` 옆의 키(description, default)를 남기고 참조 대상과 합친다.
+    return {...target, ...s}..remove(r'$ref');
+  }
+
+  final out =
+      <
+        ({
+          List<String> path,
+          Map<String, Object?> schema,
+          Map<String, Object?>? items,
+        })
+      >[];
+  void walk(Map<String, Object?> s, List<String> path) {
+    s = resolve(s);
+    if (s['type'] == 'object') {
+      final props = (s['properties'] ?? const {}) as Map<String, Object?>;
+      for (final e in props.entries) {
+        walk(e.value! as Map<String, Object?>, [...path, e.key]);
+      }
+      return;
+    }
+    final items = s['items'];
+    out.add((
+      path: path,
+      schema: s,
+      items: items is Map<String, Object?> ? resolve(items) : null,
+    ));
+  }
+
+  walk(root, []);
+  return out;
 }
 
 /// 스키마의 object 경로별 속성 이름 (예: `$.network` → `{secureScreen, ...}`).
