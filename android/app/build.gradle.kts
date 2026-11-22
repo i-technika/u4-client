@@ -30,18 +30,19 @@ android {
     }
 
     // config/app_config.<flavor>.json과 이름을 맞춘다. dev/stg는 prod와 함께 설치할 수 있게 ID를 나눈다.
+    // versionNameSuffix는 일부러 두지 않는다. versionName을 flavor·플랫폼(iOS)과 같게 유지해야
+    // userAgentSuffix의 {version}이 같고, extras.forceUpdate의 semver 비교에서
+    // "1.0.0-dev"가 pre-release로 취급되어 업데이트가 강제되는 일이 없다. 환경은 ID와 앱 이름으로 구분한다.
     flavorDimensions += "env"
     productFlavors {
         create("dev") {
             dimension = "env"
             applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
             manifestPlaceholders["appName"] = "U4 DEV"
         }
         create("stg") {
             dimension = "env"
             applicationIdSuffix = ".stg"
-            versionNameSuffix = "-stg"
             manifestPlaceholders["appName"] = "U4 STG"
         }
         create("prod") {
