@@ -1,27 +1,22 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 
 import 'package:u4/config/app_config.dart';
 
-Map<String, Object?> _read(Flavor flavor) =>
-    jsonDecode(File(flavor.assetPath).readAsStringSync())
-        as Map<String, Object?>;
+import 'helpers.dart';
 
 void main() {
   group('번들 설정 파일', () {
     for (final flavor in Flavor.values) {
       test('${flavor.name} 설정을 읽는다', () {
-        final config = AppConfig.fromJson(_read(flavor));
+        final config = AppConfig.fromJson(readConfigJson(flavor));
         expect(config.flavor, flavor);
         expect(config.app.allowedHosts, isNotEmpty);
       });
     }
 
     test('prod는 개발용 옵션이 꺼져 있다', () {
-      final config = AppConfig.fromJson(_read(Flavor.prod));
+      final config = AppConfig.fromJson(readConfigJson(Flavor.prod));
       expect(config.app.startUrl.scheme, 'https');
       expect(config.network.allowHttp, isFalse);
       expect(config.network.ignoreSslErrors, isFalse);
