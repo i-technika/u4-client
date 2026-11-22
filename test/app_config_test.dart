@@ -199,7 +199,8 @@ void main() {
     group('Android 매니페스트', () {
       // open_filex가 추가하는 미디어·저장소 권한. Play 사진·동영상 권한 정책 때문에 제거한다.
       // READ_MEDIA_IMAGES 제거는 Android에서 photos를 요청하지 않는 근거다. 제거를 풀면
-      // photos의 Android 동작(API 33+ READ_MEDIA_IMAGES, 32 이하 storage 매핑)을 함께 정한다.
+      // photos의 Android 동작(API 33+ READ_MEDIA_IMAGES, 32 이하는 READ_EXTERNAL_STORAGE
+      // 제거도 풀고 storage로 매핑)을 함께 정한다.
       const removed = [
         'READ_MEDIA_IMAGES',
         'READ_MEDIA_VIDEO',
@@ -208,34 +209,60 @@ void main() {
         'WRITE_EXTERNAL_STORAGE',
       ];
 
-      /// 주석을 뺀 뒤 `<uses-permission>` 요소를 권한 이름 → 속성 맵으로 읽는다.
-      Map<String, Map<String, String>> usesPermissions(File manifest) {
+      /// 주석을 뺀 뒤 `<uses-permission>`·`<uses-permission-sdk-23>` 선언을
+      /// 권한 이름 → 선언 목록으로 읽는다. 같은 권한을 여러 번 선언해도 모두 남긴다.
+      Map<String, List<({String tag, Map<String, String> attrs})>> declarations(
+        File manifest,
+      ) {
         final xml = manifest.readAsStringSync().replaceAll(
           RegExp('<!--.*?-->', dotAll: true),
           '',
         );
-        final result = <String, Map<String, String>>{};
-        for (final tag in RegExp(
-          r'<uses-permission\b([^>]*)>',
+        final result =
+            <String, List<({String tag, Map<String, String> attrs})>>{};
+        for (final m in RegExp(
+          r'<(uses-permission(?:-sdk-23|-sdk-m)?)(?=[\s/>])([^>]*)>',
         ).allMatches(xml)) {
           final attrs = {
             for (final a in RegExp(
-              r'([\w:]+)\s*=\s*"([^"]*)"',
-            ).allMatches(tag.group(1)!))
-              a.group(1)!: a.group(2)!,
+              r'''([\w:.-]+)\s*=\s*(["'])(.*?)\2''',
+            ).allMatches(m.group(2)!))
+              a.group(1)!: a.group(3)!,
           };
-          final name = attrs['android:name']!;
-          result[name.replaceFirst('android.permission.', '')] = attrs;
+          final name = attrs['android:name'];
+          if (name == null) {
+            fail('${manifest.path}: android:name이 없는 선언 ${m.group(0)}');
+          }
+          result
+              .putIfAbsent(
+                name.replaceFirst('android.permission.', ''),
+                () => [],
+              )
+              .add((tag: m.group(1)!, attrs: attrs));
         }
         return result;
       }
 
+      /// [decls]가 모두 selector 없는 `<uses-permission tools:node="remove">`인지 확인한다.
+      /// `tools:node="remove"`는 같은 요소 타입만 지우고, selector가 있으면 그 라이브러리 것만 지운다.
+      void expectOnlyRemoval(
+        String where,
+        List<({String tag, Map<String, String> attrs})> decls,
+      ) {
+        for (final d in decls) {
+          expect(d.tag, 'uses-permission', reason: where);
+          expect(d.attrs['tools:node'], 'remove', reason: where);
+          expect(d.attrs.containsKey('tools:selector'), isFalse, reason: where);
+        }
+      }
+
       test('main 매니페스트가 미디어·저장소 권한을 제거한다', () {
-        final declared = usesPermissions(
+        final declared = declarations(
           File('android/app/src/main/AndroidManifest.xml'),
         );
         for (final name in removed) {
-          expect(declared[name]?['tools:node'], 'remove', reason: name);
+          expect(declared[name], isNotEmpty, reason: name);
+          expectOnlyRemoval('main: $name', declared[name]!);
         }
         expect(
           AppPermission.photos.isRequestableOn(TargetPlatform.android),
@@ -251,15 +278,9 @@ void main() {
             .where((f) => f.existsSync());
         expect(manifests, isNotEmpty);
         for (final manifest in manifests) {
-          final declared = usesPermissions(manifest);
+          final declared = declarations(manifest);
           for (final name in removed) {
-            final attrs = declared[name];
-            if (attrs == null) continue;
-            expect(
-              attrs['tools:node'],
-              'remove',
-              reason: '${manifest.path}: $name',
-            );
+            expectOnlyRemoval('${manifest.path}: $name', declared[name] ?? []);
           }
         }
       });
