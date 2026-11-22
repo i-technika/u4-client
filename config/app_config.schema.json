@@ -301,7 +301,7 @@
   },
   "$defs": {
     "ms": {
-      "description": "밀리초. 상한은 Duration 넘침(음수 지연) 방지용이다 (#5).",
+      "description": "밀리초. 상한 1시간은 정책 값이다. 상한이 없으면 아주 큰 값에서 Duration이 넘쳐 음수 지연이 된다 (#5).",
       "type": "integer",
       "minimum": 0,
       "maximum": 3600000

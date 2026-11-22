@@ -484,7 +484,17 @@ void main() {
         expect(f.schema['type'], 'integer', reason: where);
         for (final (bound, step) in [('minimum', -1), ('maximum', 1)]) {
           final limit = f.schema[bound] as int?;
-          if (limit == null) continue;
+          if (limit == null) {
+            // 스키마에 경계가 없으면 로더도 막지 않아야 한다 (R2: 로더 쪽만
+            // 상한을 넣는 드리프트).
+            final far = step * (1 << 40);
+            expect(
+              () => AppConfig.fromJson(withValue(f.path, far)),
+              returnsNormally,
+              reason: '$where = $far',
+            );
+            continue;
+          }
           expect(
             () => AppConfig.fromJson(withValue(f.path, limit)),
             returnsNormally,
@@ -570,6 +580,22 @@ void main() {
           reason: url,
         );
       }
+      for (final (key, url) in [
+        (['app', 'startUrl'], 'https://example.com:99999999999999999999/'),
+        (['app', 'startUrl'], 'https://example.com:-1/'),
+        (['extras', 'forceUpdate', 'checkUrl'], 'https://example.com:-1/'),
+        (
+          ['extras', 'forceUpdate', 'checkUrl'],
+          'https://example.com:99999999999999999999/',
+        ),
+      ]) {
+        // 포트가 int 범위를 넘으면 Uri.tryParse가 FormatException을 던진다 (R2).
+        expect(
+          () => AppConfig.fromJson(withValue(key, url)),
+          _throwsConfigError('${pathOf(key)}: URL 형식 오류 (${jsonEncode(url)})'),
+          reason: url,
+        );
+      }
       for (final url in ['http://localhost:8080/', 'https://example.com/a']) {
         expect(
           AppConfig.fromJson(withValue(['app', 'startUrl'], url)).app.startUrl,
@@ -609,6 +635,32 @@ void main() {
             reason: '$where "$bad"',
           );
         }
+      }
+    });
+
+    test('제약 없는 문자열 필드는 빈 문자열을 받는다', () {
+      // 로더 쪽에만 minLength 등을 넣는 드리프트 방지 (R2).
+      const constraintKeys = {
+        'minLength',
+        'pattern',
+        'format',
+        'enum',
+        'const',
+      };
+      final plain = fields.where(
+        (f) =>
+            f.schema['type'] == 'string' &&
+            f.path.first != r'$schema' &&
+            f.schema.keys.toSet().intersection(constraintKeys).isEmpty,
+      );
+      // userAgentSuffix, splash.image, dialog.labels 3개, offline·errorPage, locale
+      expect(plain, hasLength(8));
+      for (final f in plain) {
+        expect(
+          () => AppConfig.fromJson(withValue(f.path, '')),
+          returnsNormally,
+          reason: pathOf(f.path),
+        );
       }
     });
 
@@ -688,21 +740,33 @@ void main() {
             reason: '$where = $v',
           );
         }
+        // 모르는 값 오류에 나오는 로더 허용값 목록이 스키마 enum과 같아야 한다.
+        // 그래야 스키마에서 값을 빼거나 Dart enum에만 값을 더한 드리프트도 잡는다 (R2).
         const unknown = '__unknown__';
+        Object? error;
+        try {
+          AppConfig.fromJson(withValue(e.path, e.array ? [unknown] : unknown));
+        } on AppConfigException catch (x) {
+          error = x.message;
+        }
+        final m = RegExp(
+          '^${RegExp.escape(where)}: 알 수 없는 값 "$unknown" \\((.*)\\)\$',
+        ).firstMatch('$error');
+        expect(m, isNotNull, reason: '$where: $error');
         expect(
-          () => AppConfig.fromJson(
-            withValue(e.path, e.array ? [unknown] : unknown),
-          ),
-          throwsAt(where),
+          m!.group(1)!.split(' / ').toSet(),
+          e.values.toSet(),
           reason: where,
         );
       }
     });
 
-    test('스키마의 값 제약이 로더가 검사하는 제약표와 정확히 같다', () {
-      // 스키마에 값 제약을 더하거나 바꾸면 이 표가 어긋난다. 로더 검사를 함께
+    test('스키마 값 제약 스냅샷이 로더가 검사하도록 맞춘 목록과 같다', () {
+      // 스키마에 값 제약을 더하거나 바꾸면 이 스냅샷이 어긋난다. 로더 검사를 함께
       // 넣고(옆 주석의 위치), 위의 경계·중복·형식 테스트가 새 항목을 다루는지 본다.
+      // 손으로 적은 목록이라 로더 쪽만 바뀌는 것은 위의 동작 테스트가 잡는다.
       // enum은 위 테스트가 필드마다 확인하므로 조건부(if/then) 밖에서는 뺀다.
+      // type·default는 이 스냅샷의 범위가 아니다.
       final host = AppConfig.schemaPatterns.host;
       final color = AppConfig.schemaPatterns.color;
       const ms = {'minimum': 0, 'maximum': 3600000}; // _Reader.millis
@@ -827,8 +891,8 @@ Map<String, Object?> _resolveRef(
 ///
 /// - 위치는 `$.a.b`, 배열 원소는 `$.a.b[]`이다.
 /// - `if`/`then` 안의 제약은 `if(<조건 위치>) `·`then(<조건 위치>) ` 접두사를 붙인다.
-/// - 조건부 안에서는 구조 키워드를 뺀 모든 키를 모은다. 그 밖에서는 enum·type을 뺀
-///   값 제약만 모은다.
+/// - 조건부 안에서는 구조 키워드를 뺀 모든 키를 모은다. 그 밖에서는 enum·type·
+///   additionalProperties를 뺀 값 제약만 모은다 (additionalProperties는 #4 테스트가 본다).
 Map<String, Object?> _schemaConstraints(Map<String, Object?> root) {
   const valueKeywords = {
     'required',
@@ -841,14 +905,8 @@ Map<String, Object?> _schemaConstraints(Map<String, Object?> root) {
     'pattern',
     'format',
   };
-  const structural = {
-    'properties',
-    'items',
-    'if',
-    'then',
-    'description',
-    'additionalProperties',
-  };
+  // 조건부 안에서는 additionalProperties도 기록한다 (prod 키를 막는 의미 변화, R2).
+  const structural = {'properties', 'items', 'if', 'then', 'description'};
   final out = <String, Object?>{};
   void walk(Map<String, Object?> s, String path, String ctx) {
     s = _resolveRef(root, s);

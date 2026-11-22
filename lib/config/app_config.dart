@@ -857,16 +857,27 @@ class _Reader {
       if (name(v) == raw) return v;
     }
     throw AppConfigException(
-      '$_path.$key: 알 수 없는 값 "$raw" (${values.map(name).join(' / ')})',
+      '$_path.$key: 알 수 없는 값 ${jsonEncode(raw)} '
+      '(${values.map(name).join(' / ')})',
     );
   }
 
+  /// scheme과 host가 있는 URL. 형식 오류는 모두 [AppConfigException]으로 바꾼다.
+  ///
+  /// int 범위를 넘는 포트는 `Uri.tryParse`가 받아 두었다가 `port`를 처음 읽을 때
+  /// [FormatException]을 던진다. 여기서 `port`를 읽어 미리 걸러야 설정 오류
+  /// 화면 대신 앱이 죽는 일이 없다 (#5 리뷰 R2). 음수 포트(`:-1`)도 받아 주므로
+  /// 함께 거부한다 (스키마 `format: uri`도 거부).
   Uri _parseUri(String key, String v) {
-    final u = Uri.tryParse(v);
-    if (u == null || !u.hasScheme || u.host.isEmpty) {
-      throw AppConfigException('$_path.$key: URL 형식 오류 (${jsonEncode(v)})');
+    try {
+      final u = Uri.tryParse(v);
+      if (u != null && u.hasScheme && u.host.isNotEmpty && u.port >= 0) {
+        return u;
+      }
+    } on FormatException {
+      // 아래에서 형식 오류로 알린다.
     }
-    return u;
+    throw AppConfigException('$_path.$key: URL 형식 오류 (${jsonEncode(v)})');
   }
 
   T? _get<T>(String key, String typeName) {
