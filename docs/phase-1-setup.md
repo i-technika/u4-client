@@ -143,20 +143,21 @@ Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 
 - **최소 버전 iOS 16** (`IPHONEOS_DEPLOYMENT_TARGET`).
 - **플러그인 연결:** Swift Package Manager만 쓴다. CocoaPods 연동(`Podfile`, `Podfile.lock`, `project.pbxproj`의 Pods 설정, xcconfig의 Pods include)은 #52에서 지웠다.
   - Flutter 3.50.0 기준으로 `flutter_inappwebview_ios`(1.2.0-beta.3)를 포함한 모든 플러그인이 SwiftPM으로 연결된다(#38에서 확인). CocoaPods로는 `Flutter` pod 하나만 설치되고 있었다.
-  - SwiftPM을 지원하지 않는 플러그인을 추가하면 Flutter가 `Podfile`을 다시 만들고 `pod install`을 실행한다. 그때는 이 절, `ios/Flutter/<모드>-<flavor>.xcconfig`, `test/app_display_name_test.dart`의 CocoaPods 검사를 함께 고친다. Podfile에는 9개 build configuration 매핑(`project 'Runner', {'Debug-dev' => :debug, ...}`)이 필요하다.
+  - SwiftPM을 지원하지 않는 플러그인을 추가하면 Flutter가 `Podfile`을 다시 만들고 `pod install`을 실행한다. 그때는 이 절, `ios/Flutter/<모드>-<flavor>.xcconfig`, `test/app_display_name_test.dart`의 CocoaPods 검사를 함께 고친다. Podfile에는 9개 build configuration 매핑(`project 'Runner', {'Debug-dev' => :debug, ...}`)이 필요하다. permission_handler는 SwiftPM을 지원하므로 그때도 SwiftPM으로 남고 아래 권한 매크로 규칙이 그대로 적용된다.
+  - **SwiftPM 기능을 끄지 않는다**(`flutter config --no-enable-swift-package-manager`). 끄면 Flutter가 Podfile을 다시 만들고 모든 플러그인을 CocoaPods로 설치한다. 이때 permission_handler에는 매크로가 하나도 정의되지 않아(예전 Podfile `post_install`이 하던 일) 알림까지 모든 권한이 빠진다. 빌드는 성공하므로 눈치채기 어렵다.
 - **`permission_handler` 권한 매크로:** SwiftPM 패키지(`permission_handler_apple` 9.6.5)가 Info.plist의 `NS*UsageDescription` 키를 보고 정한다. 따로 적는 목록은 없다.
   - 지금 켜지는 것: 카메라(`NSCameraUsageDescription`), 마이크(`NSMicrophoneUsageDescription`), 사진(`NSPhotoLibraryUsageDescription`·`NSPhotoLibraryAddUsageDescription`), 위치 사용 중(`NSLocationWhenInUseUsageDescription`), 알림(키 없이 기본으로 켜짐). 예전 Podfile `post_install` 매크로와 같은 목록이다. `photosAddOnly`도 `PERMISSION_PHOTOS`로 켜진다(`PERMISSION_PHOTOS_ADD_ONLY`도 1로 정의되지만 네이티브 코드는 이 값을 쓰지 않는다).
     - #52에서 `swift package dump-package`로 확인했다. 다시 확인하려면 저장소 루트에서 `PERMISSION_HANDLER_VERBOSE=1 swift package --manifest-cache none --package-path ~/.pub-cache/hosted/pub.dev/permission_handler_apple-<버전>/ios/permission_handler_apple dump-package`를 실행한다. stderr의 `resolved permission macros`가 결과다(`--manifest-cache none`이 없으면 캐시된 결과를 써서 아무것도 출력하지 않을 수 있다).
   - 권한을 추가·삭제하려면 Info.plist 키를 바꾼다. 패키지 manifest가 다시 평가되도록 DerivedData를 한 번 지운다(`rm -rf ~/Library/Developer/Xcode/DerivedData`).
   - 패키지는 빌드를 시작한 디렉토리(cwd)에서 위로 올라가며 앱 루트(`pubspec.yaml`과 `ios/*.xcodeproj`가 있는 곳)를 찾고, pbxproj의 `INFOPLIST_FILE`로 Info.plist를 읽는다. 저장소 안에서 실행한 `flutter build`·`flutter run`·`xcodebuild`는 찾는다.
-    - **Xcode.app에서 바로 빌드하면 cwd가 `/`라 찾지 못해, 알림을 뺀 모든 권한이 빠진다**(요청하면 항상 `denied`). 저장소 밖에서 절대 경로로 `xcodebuild`를 실행해도 같다.
+    - **Xcode.app에서 바로 빌드하면 cwd가 `/`라 찾지 못해, 알림을 뺀 모든 권한이 빠진다**. 빠진 권한은 상태 확인이 `denied`이고, 요청하면 다이얼로그 없이 `permanentlyDenied`를 돌려준다(설정 앱 안내로 이어진다). 저장소 밖에서 절대 경로로 `xcodebuild`를 실행해도 같다.
     - Xcode.app으로 빌드해야 하면 `launchctl setenv PERMISSION_HANDLER_INFO_PLIST <저장소>/ios/Runner/Info.plist`를 설정하고 Xcode를 다시 시작한 뒤 DerivedData를 지운다. 이 값은 사용자 세션 전체에 적용되어 자동 탐색을 대신하므로, 같은 Mac에서 다른 permission_handler 앱을 빌드하기 전에 `launchctl unsetenv PERMISSION_HANDLER_INFO_PLIST`로 지운다.
   - manifest는 build configuration을 모른다. 그래서 flavor별 Info.plist를 두면 권한이 모든 flavor의 합집합이 된다. flavor마다 권한을 달리하려면 `permission_handler.yaml`과 `dart run permission_handler_apple:select <flavor>`가 필요하다(#53에서 flavor별 Info.plist를 고를 때 참고).
 - **Info.plist:**
   - 권한 문구: 카메라, 마이크, 위치(사용 중), 사진 보관함 읽기·추가.
-- **`photos` 권한:** iOS에서는 설정대로 요청한다. 다만 웹 파일 업로드에는 사진 보관함 권한이 필요 없다(시스템 피커). 보관함을 네이티브로 직접 읽는 기능이 있을 때만 `photos`를 쓴다. iOS 14+의 `limited` 처리는 권한 요청을 구현하는 단계에서 정한다.
   - `LSApplicationQueriesSchemes`: `tel`, `sms`, `mailto`.
   - `NSAllowsLocalNetworking`: 로컬 테스트 페이지용. App Store 심사에서 허용되는 예외다.
+- **`photos` 권한:** iOS에서는 설정대로 요청한다. 다만 웹 파일 업로드에는 사진 보관함 권한이 필요 없다(시스템 피커). 보관함을 네이티브로 직접 읽는 기능이 있을 때만 `photos`를 쓴다. iOS 14+의 `limited` 처리는 권한 요청을 구현하는 단계에서 정한다.
 - **macOS에서 처음 빌드할 때:** CocoaPods는 필요 없다. `flutter build ios --flavor <flavor>`를 실행하면 SwiftPM이 패키지를 해석한다. `Package.resolved`(`Runner.xcodeproj`·`Runner.xcworkspace` 아래)가 바뀌면 커밋한다.
   - #38에서 처음 macOS로 빌드할 때는 CocoaPods 연동이 함께 생겨 커밋했고, #52에서 `pod deintegrate`로 지웠다. 예전 체크아웃에 남은 `ios/Pods/`는 지워도 된다(`.gitignore` 대상).
 
