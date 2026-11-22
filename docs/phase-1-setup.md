@@ -104,7 +104,7 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
     - 매니페스트 테스트(`test/app_config_test.dart`)가 main의 제거 선언(`tools:selector` 없이)과, 다른 source set이나 `uses-permission-sdk-23`으로 다시 선언하지 않는지를 검사한다.
     - 플러그인을 추가하거나 업데이트해서 새로 들어오는 권한은 병합 결과에서만 드러나므로, CI가 빌드한 APK도 검사한다 (#36). `tool/check_android_permissions.sh`가 `aapt2 dump permissions`로 APK의 최종 권한을 읽는다. 금지 권한(`'android.permission.X'`)이 앱이 정의하는 `permission:` 줄 말고 어느 줄에든 나오면 CI가 실패한다. 줄 형식(`uses-permission`, `uses-permission-sdk-23`, 새 태그)에 기대지 않는다.
       - 금지 목록의 원본은 `tool/android_forbidden_permissions.txt`이고, 매니페스트 테스트도 이 파일을 읽는다. 내용은 Dart 테스트와 fixture가 고정하므로, 바꿀 때 함께 고칠 곳은 파일 주석에 적었다.
-      - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. **AAB는 aapt2로 읽을 수 없어 아직 검사하지 않는다.** 15단계(출시 준비)에서 AAB를 빌드하게 되면 `bundletool`로 검사를 넓혀야 한다.
+      - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. **AAB는 aapt2로 읽을 수 없어 아직 검사하지 않는다.** 15단계(출시 준비)에서 AAB를 빌드하게 되면 `bundletool`로 검사를 넓혀야 한다 (#45). 금지 목록 밖의 새 권한을 막는 허용 목록 검사는 #46에서 다룬다.
       - 덤프를 제대로 읽었는지도 본다. INTERNET·POST_NOTIFICATIONS가 보이는지, `uses-permission`·`uses-permission-sdk-23` 줄마다 이름을 읽었는지 확인한다.
       - 판정 로직은 매번 fixture(`tool/fixtures/aapt2_permissions_*.txt`)로 먼저 확인한다. 금지 fixture(모르는 태그 줄 포함)는 금지 권한 5개만 찾아 실패해야 하고, 정상 fixture는 통과해야 한다. 빈 덤프와 이름을 읽을 수 없는 줄도 실패해야 한다.
       - 이 검사만 잡을 수 있는 경우는 주로 라이브러리가 **`<uses-permission-sdk-23>`** 으로 넣는 권한이다. main의 `<uses-permission tools:node="remove">`는 같은 태그만 지운다. 일반 `<uses-permission>`은 이미 제거된다. 제거 선언을 지우는 회귀는 매니페스트 테스트도 잡는다(Sub-issue CI에서는 테스트가 먼저 돌고, Full CI에서는 두 job이 병렬로 돈다).
