@@ -64,11 +64,16 @@
 |---|---|---|---|
 | Android applicationId | `com.itechnika.u4.dev` | `com.itechnika.u4.stg` | `com.itechnika.u4` |
 | Android 앱 이름 | U4 DEV | U4 STG | U4 |
+| versionName | `pubspec.yaml`의 `version`과 같음 | 같음 | 같음 |
 | 설정 파일 | `config/app_config.dev.json` | `config/app_config.stg.json` | `config/app_config.prod.json` |
 | HTTP(cleartext) | 허용 | 차단 | 차단 |
 
 - 앱 ID와 앱 이름은 임시값이다(0단계 문서 5장 "확인이 필요한 사항").
 - Android는 `productFlavors`로 나눠, 세 flavor를 한 기기에 함께 설치할 수 있다.
+- versionName은 flavor와 플랫폼에 관계없이 같다(예: `1.0.0`). Android flavor에 `versionNameSuffix`(`-dev` 등)를 두지 않는다.
+  - `userAgentSuffix`의 `{version}`이 Android와 iOS에서 같아야 한다.
+  - `extras.forceUpdate`는 semver로 비교하는데, `1.0.0-dev`는 pre-release라 `1.0.0`보다 낮게 취급되어 업데이트가 강제될 수 있다.
+  - 환경은 applicationId 접미사와 앱 이름으로 구분한다.
 - 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
 - 세 설정 파일은 모두 asset으로 번들된다. 비밀 값이 없어서 그렇게 했지만, 설정에 민감한 값이 들어가게 되면 flavor별 asset으로 나눠야 한다.
 
