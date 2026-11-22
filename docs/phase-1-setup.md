@@ -87,7 +87,13 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - **권한:** 인터넷, 네트워크 상태, 위치(정확·대략), 카메라, 마이크, 알림(Android 13+).
   - 카메라·GPS는 `uses-feature required="false"`로 두어 해당 하드웨어가 없는 기기도 설치할 수 있다.
   - 저장소·미디어 권한은 쓰지 않는다. `open_filex`가 추가하는 `READ_MEDIA_*`는 Play 사진·동영상 권한 정책 심사 대상이라 `tools:node="remove"`로 제거했다.
-  - CAMERA를 선언했으므로, 카메라 인텐트를 실행하기 전에 반드시 런타임 권한을 받아야 한다(8단계). 그렇지 않으면 크래시한다.
+    - 웹뷰 파일 업로드는 시스템 파일 선택기(`ACTION_GET_CONTENT`)로 고르고 임시 URI 권한을 받으므로 저장소 권한이 필요 없다(API 28~36). 촬영 선택지는 FileProvider URI를 쓰며, CAMERA 권한이 없으면 크래시하지 않고 선택지에서 빠진다.
+    - `open_filex`는 앱 영역(`dataDir`, `getExternalFilesDir`) 밖의 파일을 열 때 미디어·저장소 권한을 직접 요청한다. 이 권한은 제거했으므로 앱 영역 경로만 넘긴다(10단계 다운로드).
+    - 매니페스트 테스트(`test/app_config_test.dart`)가 main의 제거 선언(`tools:selector` 없이)과, 다른 source set이나 `uses-permission-sdk-23`으로 다시 선언하지 않는지를 검사한다.
+  - **`photos` 권한은 Android에서 요청하지 않는다 (#3).** 설정의 `permissions.requestOnLaunch`에 `photos`가 있어도 건너뛴다.
+    - permission_handler는 매니페스트에 없는 권한을 다이얼로그 없이 항상 `denied`로 돌려준다(영구 거부가 아님). 요청하면 기능이 늘 실패하고, 영구 거부가 아니라 설정 앱 안내로도 이어지지 않는다.
+    - Android 12(API 32) 이하는 permission_handler가 photos를 지원하지 않아 매니페스트와 상관없이 `denied`다. 이 버전에서 필요해지면 `READ_EXTERNAL_STORAGE`(maxSdkVersion 32) 제거를 풀고 `storage`로 따로 매핑해야 한다.
+  - CAMERA를 선언했으므로, 앱이 카메라 인텐트를 직접 실행할 때는 먼저 런타임 권한을 받아야 한다(8단계). 그렇지 않으면 `SecurityException`으로 실패한다.
 - **`<queries>`:** `tel`(DIAL), `sms`·`mailto`(SENDTO), `geo`(VIEW), `https`(VIEW), Custom Tabs 서비스, 이미지·동영상 촬영 인텐트.
 - **FileProvider:** `U4FileProvider`(authority `${applicationId}.fileprovider`)를 쓴다. 플러그인들도 `androidx.core.content.FileProvider`를 등록하므로, 매니페스트 병합 충돌을 피하려고 하위 클래스로 만들었다. 경로는 `res/xml/file_paths.xml`의 `cache/camera/`, `files/downloads/`다.
 - **네트워크 보안:**
@@ -105,6 +111,7 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
   - CocoaPods로 설치될 때를 대비해 Podfile `post_install`에도 같은 목록(위치, 카메라, 마이크, 사진, 알림)을 넣었다. 두 목록은 같게 유지한다.
 - **Info.plist:**
   - 권한 문구: 카메라, 마이크, 위치(사용 중), 사진 보관함 읽기·추가.
+- **`photos` 권한:** iOS에서는 설정대로 요청한다. 다만 웹 파일 업로드에는 사진 보관함 권한이 필요 없다(시스템 피커). 보관함을 네이티브로 직접 읽는 기능이 있을 때만 `photos`를 쓴다. iOS 14+의 `limited` 처리는 권한 요청을 구현하는 단계에서 정한다.
   - `LSApplicationQueriesSchemes`: `tel`, `sms`, `mailto`.
   - `NSAllowsLocalNetworking`: 로컬 테스트 페이지용. App Store 심사에서 허용되는 예외다.
 - **macOS에서 처음 빌드할 때:** `flutter build ios`를 실행하면 `pod install`과 SwiftPM 해석이 이어서 진행된다. 이때 생기는 `ios/Podfile.lock`을 커밋한다.
@@ -123,17 +130,22 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
   - 로더가 다시 검사하는 것: 모르는 키, 필수 키, 타입, enum 값, 색상 형식, URL에 scheme·host가 있는지, `allowedHosts`가 비었는지, 강제 업데이트의 `checkUrl`, prod 제약.
   - 로더가 검사하지 않는 것(범위, `hostPattern`, URL scheme 종류, `uniqueItems` 등)은 CI가 막는다. `tool/validate_config.sh`가 `check-jsonschema`로 번들 설정 파일을 검증한다. `format: uri` 검사 패키지(`rfc3986-validator`)가 빠지면 잘못된 URI도 통과하므로, 스크립트는 fixture가 uri 형식 오류 하나로만 실패하는지 확인한다. 버전은 `tool/requirements-ci.txt`에 고정했다. 런타임 범위 검사는 #5에서 다룬다.
   - prod 제약(https, 개발용 옵션 금지)을 한 번 더 검사한다.
+  - **권한 (#3):** 설정 파일은 플랫폼 공통이라 플랫폼마다 건너뛸 권한이 있다.
+    - 권한 요청 코드(8·9·11·13단계)는 시작 시 목록을 `PermissionsConfig.requestOnLaunchOn(defaultTargetPlatform)`으로만 받는다. 설정 원본 목록은 공개하지 않는다.
+    - 기능을 쓸 때 요청하는 경로도 `AppPermission.isRequestableOn(defaultTargetPlatform)`을 먼저 확인한다.
+    - `isRequestableOn`은 매니페스트·플러그인 제약 때문에 그 플랫폼에서 요청 자체를 건너뛸지만 정한다(플랫폼 단위). API 레벨에 따른 실제 상태는 permission_handler가 돌려준다. 지금은 Android의 `photos`만 `false`다.
+    - `deniedGuide`는 `isPermanentlyDenied`일 때만 설정 앱 이동을 안내한다.
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
   - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류를 포함해 모든 설정 오류에 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 모르는 키와 스키마·모델 일치(#4), 확인 화면과 설정 실패 화면 위젯 테스트(37개).
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 모르는 키와 스키마·모델 일치(#4), 확인 화면과 설정 실패 화면 위젯 테스트(45개).
 
 ## 6. 확인 결과
 
 | 항목 | 결과 |
 |---|---|
 | `flutter analyze` | 이슈 없음 |
-| `flutter test` | 37개 통과 (#4 반영 후) |
+| `flutter test` | 45개 통과 (#4 반영 후) |
 | `flutter build apk --debug --flavor dev` / `stg` | 성공 |
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |
