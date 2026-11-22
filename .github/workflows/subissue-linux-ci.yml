@@ -56,6 +56,11 @@ jobs:
       - name: Build Android APK (Debug, dev flavor)
         run: flutter build apk --debug --flavor dev
 
+      # 병합된 최종 권한에 미디어·저장소 권한이 없는지 APK로 검사한다 (#36).
+      # 플러그인이 새로 넣는 권한은 소스 매니페스트 테스트로 잡을 수 없다. 내용은 스크립트 참고.
+      - name: Check Android permissions in APK
+        run: bash tool/check_android_permissions.sh build/app/outputs/flutter-apk/app-dev-debug.apk
+
       # 설정 파일을 스키마로 검증한다 (#4). 내용은 tool/validate_config.sh 참고.
       # 앞 단계가 실패해도 결과를 함께 보도록 마지막에 두고 항상 실행한다.
       - name: Setup Python

@@ -204,13 +204,23 @@ void main() {
       // READ_MEDIA_IMAGES 제거는 Android에서 photos를 요청하지 않는 근거다. 제거를 풀면
       // photos의 Android 동작(API 33+ READ_MEDIA_IMAGES, 32 이하는 READ_EXTERNAL_STORAGE
       // 제거도 풀고 storage로 매핑)을 함께 정한다.
-      const removed = [
-        'READ_MEDIA_IMAGES',
-        'READ_MEDIA_VIDEO',
-        'READ_MEDIA_AUDIO',
-        'READ_EXTERNAL_STORAGE',
-        'WRITE_EXTERNAL_STORAGE',
-      ];
+      // 목록은 APK 권한 검사(tool/check_android_permissions.sh, #36)와 같은 파일을 쓴다.
+      final removed = File('tool/android_forbidden_permissions.txt')
+          .readAsLinesSync()
+          .map((l) => l.replaceFirst(RegExp('#.*'), '').trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
+      // 파일에서 항목이 빠지면 두 검사가 함께 조용히 약해지므로 내용을 여기서 고정한다.
+      test('금지 권한 목록을 읽는다', () {
+        expect(removed, [
+          'READ_MEDIA_IMAGES',
+          'READ_MEDIA_VIDEO',
+          'READ_MEDIA_AUDIO',
+          'READ_EXTERNAL_STORAGE',
+          'WRITE_EXTERNAL_STORAGE',
+        ]);
+      });
 
       /// 주석을 뺀 뒤 `<uses-permission>`·`<uses-permission-sdk-23>` 선언을
       /// 권한 이름 → 선언 목록으로 읽는다. 같은 권한을 여러 번 선언해도 모두 남긴다.

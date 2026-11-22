@@ -102,6 +102,11 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
     - 웹뷰 파일 업로드는 시스템 파일 선택기(`ACTION_GET_CONTENT`)로 고르고 임시 URI 권한을 받으므로 저장소 권한이 필요 없다(API 28~36). 촬영 선택지는 FileProvider URI를 쓰며, CAMERA 권한이 없으면 크래시하지 않고 선택지에서 빠진다.
     - `open_filex`는 앱 영역(`dataDir`, `getExternalFilesDir`) 밖의 파일을 열 때 미디어·저장소 권한을 직접 요청한다. 이 권한은 제거했으므로 앱 영역 경로만 넘긴다(10단계 다운로드).
     - 매니페스트 테스트(`test/app_config_test.dart`)가 main의 제거 선언(`tools:selector` 없이)과, 다른 source set이나 `uses-permission-sdk-23`으로 다시 선언하지 않는지를 검사한다.
+    - 플러그인을 추가하거나 업데이트해서 새로 들어오는 권한은 병합 결과에서만 드러나므로, CI가 빌드한 APK도 검사한다 (#36). `tool/check_android_permissions.sh`가 `aapt2 dump permissions`로 APK의 최종 권한(`uses-permission`, `uses-permission-sdk-23`)을 읽는다. 금지 권한이 하나라도 있으면 CI가 실패한다.
+      - 금지 목록은 `tool/android_forbidden_permissions.txt` 한 곳에 있고, 매니페스트 테스트도 이 파일을 읽는다.
+      - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다.
+      - 덤프가 비어서 통과하는 일을 막으려고 INTERNET·POST_NOTIFICATIONS가 보이는지 확인한다. 검사 로직이 동작하는지는 fixture(`tool/fixtures/aapt2_permissions_forbidden.txt`)로 매번 확인한다.
+      - 실패하면 어느 플러그인이 넣었는지 `build/app/outputs/logs/manifest-merger-*-report.txt`에서 찾아, main 매니페스트에 `tools:node="remove"`를 추가하거나 플러그인을 바꾼다.
   - **`photos` 권한은 Android에서 요청하지 않는다 (#3).** 설정의 `permissions.requestOnLaunch`에 `photos`가 있어도 건너뛴다.
     - permission_handler는 매니페스트에 없는 권한을 다이얼로그 없이 항상 `denied`로 돌려준다(영구 거부가 아님). 요청하면 기능이 늘 실패하고, 영구 거부가 아니라 설정 앱 안내로도 이어지지 않는다.
     - Android 12(API 32) 이하는 permission_handler가 photos를 지원하지 않아 매니페스트와 상관없이 `denied`다. 이 버전에서 필요해지면 `READ_EXTERNAL_STORAGE`(maxSdkVersion 32) 제거를 풀고 `storage`로 따로 매핑해야 한다.
