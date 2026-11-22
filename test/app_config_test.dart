@@ -146,9 +146,9 @@ void main() {
           'permissions': {'requestOnLaunch': requestOnLaunch},
         }).permissions;
 
-    test('photos는 설정 검증을 통과하고 원래 목록에 남는다', () {
+    test('photos는 설정 검증을 통과하고 iOS에서는 설정 순서대로 요청한다', () {
       final config = permissions(['camera', 'photos', 'location']);
-      expect(config.requestOnLaunch, [
+      expect(config.requestOnLaunchOn(TargetPlatform.iOS), [
         AppPermission.camera,
         AppPermission.photos,
         AppPermission.location,
@@ -163,14 +163,6 @@ void main() {
       ]);
     });
 
-    test('iOS에서는 설정한 권한을 모두 요청한다', () {
-      final config = permissions(['camera', 'photos', 'location']);
-      expect(
-        config.requestOnLaunchOn(TargetPlatform.iOS),
-        config.requestOnLaunch,
-      );
-    });
-
     test('Android에서 photos만 있으면 요청할 권한이 없다', () {
       expect(
         permissions(['photos']).requestOnLaunchOn(TargetPlatform.android),
@@ -178,41 +170,99 @@ void main() {
       );
     });
 
-    test('iOS에서는 모든 권한을 요청할 수 있다', () {
-      for (final p in AppPermission.values) {
-        expect(p.isRequestableOn(TargetPlatform.iOS), isTrue, reason: p.name);
-      }
+    test('돌려준 목록은 수정할 수 없다', () {
+      final list = permissions(['camera'])
+          .requestOnLaunchOn(TargetPlatform.android);
+      expect(() => list.add(AppPermission.photos), throwsUnsupportedError);
     });
 
-    test('Android에서 요청할 수 없는 권한은 photos뿐이다', () {
-      expect(
-        AppPermission.values.where(
-          (p) => !p.isRequestableOn(TargetPlatform.android),
-        ),
-        [AppPermission.photos],
-      );
-    });
-
-    test('Android 매니페스트가 사진 권한을 제거하는 것과 일치한다', () {
-      // 매니페스트에서 제거를 풀면 photos를 Android에서도 요청하도록 함께 바꿔야 한다.
-      final manifest = File('android/app/src/main/AndroidManifest.xml')
-          .readAsStringSync();
-      for (final name in ['READ_MEDIA_IMAGES', 'READ_EXTERNAL_STORAGE']) {
+    test('photos는 iOS에서만 요청할 수 있다', () {
+      for (final platform in TargetPlatform.values) {
         expect(
-          manifest,
-          matches(
-            RegExp(
-              'android:name="android\\.permission\\.$name"\\s+'
-              'tools:node="remove"',
-            ),
-          ),
-          reason: name,
+          AppPermission.photos.isRequestableOn(platform),
+          platform == TargetPlatform.iOS,
+          reason: platform.name,
         );
       }
-      expect(
-        AppPermission.photos.isRequestableOn(TargetPlatform.android),
-        isFalse,
-      );
+    });
+
+    test('photos 외 권한은 Android와 iOS에서 모두 요청할 수 있다', () {
+      for (final p in AppPermission.values.where(
+        (p) => p != AppPermission.photos,
+      )) {
+        for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+          expect(p.isRequestableOn(platform), isTrue, reason: '$p $platform');
+        }
+      }
+    });
+
+    group('Android 매니페스트', () {
+      // open_filex가 추가하는 미디어·저장소 권한. Play 사진·동영상 권한 정책 때문에 제거한다.
+      // READ_MEDIA_IMAGES 제거는 Android에서 photos를 요청하지 않는 근거다. 제거를 풀면
+      // photos의 Android 동작(API 33+ READ_MEDIA_IMAGES, 32 이하 storage 매핑)을 함께 정한다.
+      const removed = [
+        'READ_MEDIA_IMAGES',
+        'READ_MEDIA_VIDEO',
+        'READ_MEDIA_AUDIO',
+        'READ_EXTERNAL_STORAGE',
+        'WRITE_EXTERNAL_STORAGE',
+      ];
+
+      /// 주석을 뺀 뒤 `<uses-permission>` 요소를 권한 이름 → 속성 맵으로 읽는다.
+      Map<String, Map<String, String>> usesPermissions(File manifest) {
+        final xml = manifest.readAsStringSync().replaceAll(
+          RegExp('<!--.*?-->', dotAll: true),
+          '',
+        );
+        final result = <String, Map<String, String>>{};
+        for (final tag in RegExp(
+          r'<uses-permission\b([^>]*)>',
+        ).allMatches(xml)) {
+          final attrs = {
+            for (final a in RegExp(
+              r'([\w:]+)\s*=\s*"([^"]*)"',
+            ).allMatches(tag.group(1)!))
+              a.group(1)!: a.group(2)!,
+          };
+          final name = attrs['android:name']!;
+          result[name.replaceFirst('android.permission.', '')] = attrs;
+        }
+        return result;
+      }
+
+      test('main 매니페스트가 미디어·저장소 권한을 제거한다', () {
+        final declared = usesPermissions(
+          File('android/app/src/main/AndroidManifest.xml'),
+        );
+        for (final name in removed) {
+          expect(declared[name]?['tools:node'], 'remove', reason: name);
+        }
+        expect(
+          AppPermission.photos.isRequestableOn(TargetPlatform.android),
+          isFalse,
+        );
+      });
+
+      test('다른 source set이 제거한 권한을 다시 선언하지 않는다', () {
+        final manifests = Directory('android/app/src')
+            .listSync()
+            .whereType<Directory>()
+            .map((d) => File('${d.path}/AndroidManifest.xml'))
+            .where((f) => f.existsSync());
+        expect(manifests, isNotEmpty);
+        for (final manifest in manifests) {
+          final declared = usesPermissions(manifest);
+          for (final name in removed) {
+            final attrs = declared[name];
+            if (attrs == null) continue;
+            expect(
+              attrs['tools:node'],
+              'remove',
+              reason: '${manifest.path}: $name',
+            );
+          }
+        }
+      });
     });
   });
 }
