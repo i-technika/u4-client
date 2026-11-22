@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- stg/prod: HTTPS만 허용. dev는 src/dev/res/xml/network_security_config.xml이 덮어쓴다. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- debug 빌드에서만 사용자 인증서(프록시 디버깅용)를 신뢰한다 -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

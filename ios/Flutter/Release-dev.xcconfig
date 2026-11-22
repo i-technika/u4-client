@@ -1,0 +1,3 @@
+// Release-dev build configuration (#38). scheme `dev`가 이 configuration을 쓴다.
+#include "Generated.xcconfig"
+#include "AppInfo-dev.xcconfig"

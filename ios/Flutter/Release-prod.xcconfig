@@ -1,0 +1,3 @@
+// Release-prod build configuration (#38). scheme `prod`가 이 configuration을 쓴다.
+#include "Generated.xcconfig"
+#include "AppInfo-prod.xcconfig"

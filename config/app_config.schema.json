@@ -18,7 +18,7 @@
       "required": ["name", "startUrl", "allowedHosts"],
       "properties": {
         "name": {
-          "description": "앱 이름. Alert 시리즈 다이얼로그 제목으로도 쓴다.",
+          "description": "앱 이름. Alert 시리즈 다이얼로그 제목으로도 쓴다. Android 런처 이름(android:label)은 빌드 시 이 값을 읽는다(@·?로 시작, 백슬래시, ${ 포함, 글자·숫자 없음은 빌드 실패). iOS 홈 화면 이름은 ios/Flutter/AppInfo-<flavor>.xcconfig에 같은 값을 따로 적는다(docs/phase-1-setup.md 2장).",
           "type": "string",
           "minLength": 1
         },
@@ -210,7 +210,7 @@
       "additionalProperties": false,
       "properties": {
         "requestOnLaunch": {
-          "description": "앱 시작 시 일괄 요청할 권한. 비우면 기능을 쓸 때 요청한다.",
+          "description": "앱 시작 시 일괄 요청할 권한. 비우면 기능을 쓸 때 요청한다. photos는 iOS에서만 요청하고 Android에서는 건너뛴다(매니페스트에서 미디어 권한을 제거했다). 웹 파일 업로드에는 두 플랫폼 모두 photos가 필요 없다.",
           "type": "array",
           "items": { "enum": ["location", "camera", "microphone", "photos", "notification"] },
           "uniqueItems": true,
@@ -300,7 +300,12 @@
     }
   },
   "$defs": {
-    "ms": { "type": "integer", "minimum": 0 },
+    "ms": {
+      "description": "밀리초. 상한 1시간은 정책 값이다. 상한이 없으면 아주 큰 값에서 Duration이 넘쳐 음수 지연이 된다 (#5).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
     "hostPattern": {
       "type": "string",
       "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$"

@@ -1,0 +1,118 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id("com.android.application")
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+/**
+ * config/app_config.<flavor>.json의 app.name을 읽는다 (#9).
+ *
+ * Android 런처 이름의 원본은 설정 JSON이다. 여기에 이름을 따로 적지 않는다.
+ * providers.fileContents로 읽어 JSON을 고치면 Gradle이 설정 단계를 다시 실행한다.
+ * 설정 단계에서 세 flavor를 모두 읽으므로, 한 flavor 파일이 깨져도 모든 빌드가 실패한다.
+ */
+fun appNameOf(flavor: String): String {
+    val file = layout.projectDirectory.file("../../config/app_config.$flavor.json")
+    val path = file.asFile.path
+    // asText는 JVM 기본 문자셋(MS949 등)으로 읽어 한글 이름이 깨질 수 있으므로 UTF-8로 직접 읽는다.
+    val text = providers.fileContents(file).asBytes.orNull?.toString(Charsets.UTF_8)
+        ?: throw GradleException("$path 파일이 없습니다")
+    val root = try {
+        JsonSlurper().parseText(text) as? Map<*, *>
+    } catch (e: Exception) {
+        throw GradleException("$path: JSON을 읽을 수 없습니다 (${e.message})", e)
+    }
+    val name = (root?.get("app") as? Map<*, *>)?.get("name") as? String
+    if (name.isNullOrBlank()) {
+        throw GradleException("$path: app.name이 없거나 비어 있습니다")
+    }
+    // android:label 값으로 그대로 쓸 수 없는 이름은 막는다. 런처 이름이 Dart 쪽 이름과 달라진다.
+    // test/app_display_name_test.dart가 같은 규칙으로 번들 설정을 검사한다. 고칠 때 함께 고친다.
+    // - @·?로 시작: aapt가 리소스 참조로 해석한다 (앞의 ASCII 공백은 aapt가 무시한다).
+    // - \: aapt가 이스케이프로 해석해 글자가 사라지거나 바뀐다.
+    // - ${: 매니페스트 병합기가 placeholder로 다시 치환한다.
+    // - 글자(L*)·십진 숫자(Nd)가 하나도 없음: 폭 없는 공백 등으로 런처 이름이 빈 칸이 된다.
+    //   보조 평면 글자도 세도록 code point 단위로 본다.
+    val head = name.trimStart { it == ' ' || it in '\t'..'\r' }
+    val problem = when {
+        head.startsWith("@") || head.startsWith("?") -> "@ 또는 ?로 시작할 수 없습니다"
+        name.contains("\\") -> "\\를 쓸 수 없습니다"
+        name.contains("\${") -> "\${를 쓸 수 없습니다"
+        name.codePoints().noneMatch { Character.isLetterOrDigit(it) } ->
+            "글자나 숫자가 하나 이상 있어야 합니다"
+        else -> null
+    }
+    if (problem != null) {
+        throw GradleException("$path: app.name은 $problem (\"$name\")")
+    }
+    return name
+}
+
+android {
+    namespace = "com.itechnika.u4"
+    // permission_handler_android 13.x가 37 이상을 요구한다. targetSdk는 Flutter 기본값 유지
+    compileSdk = 37
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        // 임시 ID. 확정 전 (docs/phase-0-requirements.md 5장)
+        applicationId = "com.itechnika.u4"
+        // Android 9 (API 28) 이상 지원
+        minSdk = 28
+        targetSdk = flutter.targetSdkVersion
+        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
+        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
+        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
+        // flag during build.
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    // config/app_config.<flavor>.json과 이름을 맞춘다. dev/stg는 prod와 함께 설치할 수 있게 ID를 나눈다.
+    // versionNameSuffix는 일부러 두지 않는다. versionName을 flavor·플랫폼(iOS)과 같게 유지해야
+    // userAgentSuffix의 {version}이 같고, extras.forceUpdate의 semver 비교에서
+    // "1.0.0-dev"가 pre-release로 취급되어 업데이트가 강제되는 일이 없다. 환경은 ID와 앱 이름으로 구분한다.
+    // 런처 이름(AndroidManifest.xml의 ${appName})은 flavor 설정 JSON의 app.name을 쓴다.
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+        }
+        create("stg") {
+            dimension = "env"
+            applicationIdSuffix = ".stg"
+        }
+        create("prod") {
+            dimension = "env"
+        }
+    }
+    productFlavors.configureEach {
+        manifestPlaceholders["appName"] = appNameOf(name)
+    }
+
+    buildTypes {
+        release {
+            // TODO: Add your own signing config for the release build.
+            // Signing with the debug keys for now, so `flutter run --release` works.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}

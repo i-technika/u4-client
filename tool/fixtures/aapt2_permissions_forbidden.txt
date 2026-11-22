@@ -1,0 +1,12 @@
+package: com.itechnika.u4.dev
+uses-permission: name='android.permission.INTERNET'
+uses-permission-v2: name='android.permission.READ_MEDIA_IMAGES'
+uses-permission-sdk-23: name='android.permission.READ_MEDIA_VIDEO'
+uses-permission: name='android.permission.READ_MEDIA_AUDIO' required='false'
+optional-permission: name='android.permission.READ_MEDIA_AUDIO'
+uses-permission: name='android.permission.READ_EXTERNAL_STORAGE' maxSdkVersion='32'
+uses-permission: maxSdkVersion='28' name='android.permission.WRITE_EXTERNAL_STORAGE'
+uses-permission: name='android.permission.READ_MEDIA_VISUAL_USER_SELECTED'
+uses-permission: name='com.example.android.permission.READ_MEDIA_IMAGES_LEGACY'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+permission: com.itechnika.u4.dev.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION

@@ -1,0 +1,48 @@
+name: u4
+description: "U4 web hybrid app client"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+  # Flutter 버전 고정: 3.50.x 패치만 허용 (정확한 버전은 .fvmrc)
+  flutter: ">=3.50.0 <3.51.0"
+
+# 직접 의존성은 정확한 버전으로 고정한다. 올릴 때는 PR로 하나씩 올린다.
+dependencies:
+  flutter:
+    sdk: flutter
+  material_ui: 1.11.0
+  cupertino_icons: 1.0.8
+
+  # 웹뷰. 안정판 6.1.5(2024-10)의 Android 구현은 AGP 9에서 빌드되지 않아
+  # (getDefaultProguardFile('proguard-android.txt') 제거) beta를 고정한다.
+  # 안정판이 나오면 교체. 웹뷰 호출부는 WebViewAdapter로 감싼다 (docs/phase-1-setup.md)
+  flutter_inappwebview: 6.2.0-beta.3
+
+  # 네이티브 연동 (폴리필 대상)
+  permission_handler: 13.0.2
+  url_launcher: 6.3.3
+  geolocator: 14.1.2
+  share_plus: 13.3.1
+  # 7.3.2는 geolocator 14.1.2와 dbus 버전이 충돌한다 (Linux 구현 의존성)
+  connectivity_plus: 7.3.1
+  app_links: 7.2.2
+
+  # 파일·앱 정보
+  path_provider: 2.1.6
+  open_filex: 5.0.0
+  package_info_plus: 10.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - config/app_config.dev.json
+    - config/app_config.stg.json
+    - config/app_config.prod.json

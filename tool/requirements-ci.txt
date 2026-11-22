@@ -1,0 +1,6 @@
+# CI 설정 스키마 검증 도구 (tool/validate_config.sh). 버전을 올릴 때는 PR로 하나씩 올린다.
+check-jsonschema==0.38.2
+# 형식 검사 동작을 정하는 검증 엔진. check-jsonschema의 전이 의존성이지만 직접 고정한다.
+jsonschema==4.26.0
+# format: uri 검사에 필요하다 (MIT). 없으면 jsonschema가 uri 형식을 검사하지 않고 통과시킨다.
+rfc3986-validator==0.1.1
