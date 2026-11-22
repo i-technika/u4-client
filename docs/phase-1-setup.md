@@ -102,6 +102,13 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
     - 웹뷰 파일 업로드는 시스템 파일 선택기(`ACTION_GET_CONTENT`)로 고르고 임시 URI 권한을 받으므로 저장소 권한이 필요 없다(API 28~36). 촬영 선택지는 FileProvider URI를 쓰며, CAMERA 권한이 없으면 크래시하지 않고 선택지에서 빠진다.
     - `open_filex`는 앱 영역(`dataDir`, `getExternalFilesDir`) 밖의 파일을 열 때 미디어·저장소 권한을 직접 요청한다. 이 권한은 제거했으므로 앱 영역 경로만 넘긴다(10단계 다운로드).
     - 매니페스트 테스트(`test/app_config_test.dart`)가 main의 제거 선언(`tools:selector` 없이)과, 다른 source set이나 `uses-permission-sdk-23`으로 다시 선언하지 않는지를 검사한다.
+    - 플러그인을 추가하거나 업데이트해서 새로 들어오는 권한은 병합 결과에서만 드러나므로, CI가 빌드한 APK도 검사한다 (#36). `tool/check_android_permissions.sh`가 `aapt2 dump permissions`로 APK의 최종 권한을 읽는다. 금지 권한(`'android.permission.X'`)이 앱이 정의하는 `permission:` 줄 말고 어느 줄에든 나오면 CI가 실패한다. 줄 형식(`uses-permission`, `uses-permission-sdk-23`, 새 태그)에 기대지 않는다.
+      - 금지 목록의 원본은 `tool/android_forbidden_permissions.txt`이고, 매니페스트 테스트도 이 파일을 읽는다. 내용은 Dart 테스트와 fixture가 고정하므로, 바꿀 때 함께 고칠 곳은 파일 주석에 적었다.
+      - Sub-issue Linux CI는 dev debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. **AAB는 aapt2로 읽을 수 없어 아직 검사하지 않는다.** 15단계(출시 준비)에서 AAB를 빌드하게 되면 `bundletool`로 검사를 넓혀야 한다 (#45). 금지 목록 밖의 새 권한을 막는 허용 목록 검사는 #46에서 다룬다.
+      - 덤프를 제대로 읽었는지도 본다. INTERNET·POST_NOTIFICATIONS가 보이는지, `uses-permission`·`uses-permission-sdk-23` 줄마다 이름을 읽었는지 확인한다.
+      - 판정 로직은 매번 fixture(`tool/fixtures/aapt2_permissions_*.txt`)로 먼저 확인한다. 금지 fixture(모르는 태그 줄 포함)는 금지 권한 5개만 찾아 실패해야 하고, 정상 fixture는 통과해야 한다. 빈 덤프와 이름을 읽을 수 없는 줄도 실패해야 한다.
+      - 이 검사만 잡을 수 있는 경우는 주로 라이브러리가 **`<uses-permission-sdk-23>`** 으로 넣는 권한이다. main의 `<uses-permission tools:node="remove">`는 같은 태그만 지운다. 일반 `<uses-permission>`은 이미 제거된다. 제거 선언을 지우는 회귀는 매니페스트 테스트도 잡는다(Sub-issue CI에서는 테스트가 먼저 돌고, Full CI에서는 두 job이 병렬로 돈다).
+      - 실패하면 걸린 덤프 줄을 출력한다. APK 옆에 병합 리포트(`build/app/outputs/logs/manifest-merger-<flavor>-<buildType>-report.txt`)가 있으면 같은 태그 항목의 출처도 출력하고, 없으면 없다고 알린다. 덤프 줄과 **같은 태그**로 main 매니페스트에 selector 없는 `tools:node="remove"`를 추가하거나 플러그인을 바꾼다. 매니페스트 테스트는 `uses-permission-sdk-23`의 제거 선언도 허용한다.
   - **`photos` 권한은 Android에서 요청하지 않는다 (#3).** 설정의 `permissions.requestOnLaunch`에 `photos`가 있어도 건너뛴다.
     - permission_handler는 매니페스트에 없는 권한을 다이얼로그 없이 항상 `denied`로 돌려준다(영구 거부가 아님). 요청하면 기능이 늘 실패하고, 영구 거부가 아니라 설정 앱 안내로도 이어지지 않는다.
     - Android 12(API 32) 이하는 permission_handler가 photos를 지원하지 않아 매니페스트와 상관없이 `denied`다. 이 버전에서 필요해지면 `READ_EXTERNAL_STORAGE`(maxSdkVersion 32) 제거를 풀고 `storage`로 따로 매핑해야 한다.
