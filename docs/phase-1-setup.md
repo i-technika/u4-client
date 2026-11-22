@@ -104,9 +104,8 @@ Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 
 - scheme `dev`·`stg`·`prod`만 있다. flavor 없는 `Runner` scheme은 지웠으므로 `--flavor` 없이 iOS를 빌드할 수 없다(Android와 같다).
 - build configuration은 `Debug`·`Release`·`Profile` × flavor 9개다. 프로젝트·Runner·RunnerTests 모두 같은 9개를 가진다.
 - xcconfig 구성 (`ios/Flutter/`):
-  - `<모드>-<flavor>.xcconfig`: Runner의 각 configuration이 쓴다. 그 configuration의 Pods xcconfig, `Generated.xcconfig`, `AppInfo-<flavor>.xcconfig`를 포함만 한다.
+  - `<모드>-<flavor>.xcconfig`: Runner의 각 configuration이 쓴다. `Generated.xcconfig`와 `AppInfo-<flavor>.xcconfig`를 포함만 한다(CocoaPods를 쓰지 않으므로 Pods xcconfig는 없다, #52).
   - `AppInfo-<flavor>.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER`와 `APP_DISPLAY_NAME`. Xcode 프로젝트(`project.pbxproj`)는 Runner의 bundle ID를 정하지 않는다.
-- `ios/Podfile`의 `project` 매핑에 9개 configuration을 모두 적는다. 새 configuration을 만들면 같이 고친다.
 - Xcode에서 scheme이나 configuration을 추가·복제하면 `test/app_display_name_test.dart`가 목록·xcconfig 연결이 어긋난 것을 잡는다.
 - `tool/check_ios_flavors.sh`는 9개 configuration(기기·시뮬레이터 SDK 각각)과 3개 scheme에서 `xcodebuild -showBuildSettings`가 계산한 최종 bundle ID·앱 이름·configuration을 `AppInfo-<flavor>.xcconfig`와 비교한다. 위 테스트는 파일 텍스트를 보므로, 다른 xcconfig나 SDK 조건을 거쳐 값이 바뀌는 경우는 이 스크립트가 잡는다. Milestone Full CI의 iOS job이 실행한다.
 - 실기기 설치용 서명(Team, flavor별 App ID·프로비저닝)은 아직 정하지 않았다. M1 종료 전 실기기 점검(#16) 때 정한다.
@@ -141,19 +140,22 @@ Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 
 
 ## 4. iOS 설정
 
-- **최소 버전 iOS 16** (`IPHONEOS_DEPLOYMENT_TARGET`, Podfile `platform`).
-- **플러그인 연결:** 기본은 Swift Package Manager다. SwiftPM을 지원하지 않는 플러그인을 대비해 `ios/Podfile`을 두었지만, Flutter 3.50.0 기준으로 `flutter_inappwebview_ios`(1.2.0-beta.3)를 포함한 모든 플러그인이 SwiftPM으로 연결되어 CocoaPods로는 `Flutter` pod만 설치된다(#38에서 확인).
-- **`permission_handler` 권한 매크로:**
-  - SwiftPM으로 설치되면 Info.plist의 `NS*UsageDescription` 키를 보고 자동으로 켠다.
-  - CocoaPods로 설치될 때를 대비해 Podfile `post_install`에도 같은 목록(위치, 카메라, 마이크, 사진, 알림)을 넣었다. 두 목록은 같게 유지한다.
+- **최소 버전 iOS 16** (`IPHONEOS_DEPLOYMENT_TARGET`).
+- **플러그인 연결:** Swift Package Manager만 쓴다. CocoaPods 연동(`Podfile`, `Podfile.lock`, `project.pbxproj`의 Pods 설정, xcconfig의 Pods include)은 #52에서 지웠다.
+  - Flutter 3.50.0 기준으로 `flutter_inappwebview_ios`(1.2.0-beta.3)를 포함한 모든 플러그인이 SwiftPM으로 연결된다(#38에서 확인). CocoaPods로는 `Flutter` pod 하나만 설치되고 있었다.
+  - SwiftPM을 지원하지 않는 플러그인을 추가하면 Flutter가 `Podfile`을 다시 만들고 `pod install`을 실행한다. 그때는 이 절, `ios/Flutter/<모드>-<flavor>.xcconfig`, `test/app_display_name_test.dart`의 CocoaPods 검사, `tool/check_ios_flavors.sh`의 `PODS_*` 검사를 함께 고친다. Podfile에는 9개 build configuration 매핑(`project 'Runner', {'Debug-dev' => :debug, ...}`)이 필요하다.
+- **`permission_handler` 권한 매크로:** SwiftPM 패키지(`permission_handler_apple` 9.6.5)가 Info.plist의 `NS*UsageDescription` 키를 보고 정한다. 따로 적는 목록은 없다.
+  - 지금 켜지는 것: 카메라(`NSCameraUsageDescription`), 마이크(`NSMicrophoneUsageDescription`), 사진(`NSPhotoLibraryUsageDescription`·`NSPhotoLibraryAddUsageDescription`), 위치 사용 중(`NSLocationWhenInUseUsageDescription`), 알림(키 없이 기본으로 켜짐). 예전 Podfile `post_install` 매크로와 같은 목록이고, `NSPhotoLibraryAddUsageDescription`가 있어 `photosAddOnly`(`PERMISSION_PHOTOS_ADD_ONLY`)도 켜진다.
+    - #52에서 `swift package dump-package`로 확인했다. 다시 확인하려면 저장소 루트에서 `PERMISSION_HANDLER_VERBOSE=1 swift package --package-path ~/.pub-cache/hosted/pub.dev/permission_handler_apple-<버전>/ios/permission_handler_apple dump-package`를 실행한다.
+  - 권한을 추가·삭제하려면 Info.plist 키를 바꾼다. 패키지 manifest가 다시 평가되도록 DerivedData를 한 번 지운다(`rm -rf ~/Library/Developer/Xcode/DerivedData`).
+  - 패키지는 빌드를 시작한 디렉토리에서 Info.plist를 찾는다. `flutter build`·`flutter run`·`xcodebuild`는 찾지만, **Xcode.app에서 바로 빌드하면 찾지 못해 모든 권한이 빠진다**(요청하면 항상 `denied`). Xcode.app으로 빌드할 때는 `launchctl setenv PERMISSION_HANDLER_INFO_PLIST <저장소>/ios/Runner/Info.plist`를 먼저 설정한다.
 - **Info.plist:**
   - 권한 문구: 카메라, 마이크, 위치(사용 중), 사진 보관함 읽기·추가.
 - **`photos` 권한:** iOS에서는 설정대로 요청한다. 다만 웹 파일 업로드에는 사진 보관함 권한이 필요 없다(시스템 피커). 보관함을 네이티브로 직접 읽는 기능이 있을 때만 `photos`를 쓴다. iOS 14+의 `limited` 처리는 권한 요청을 구현하는 단계에서 정한다.
   - `LSApplicationQueriesSchemes`: `tel`, `sms`, `mailto`.
   - `NSAllowsLocalNetworking`: 로컬 테스트 페이지용. App Store 심사에서 허용되는 예외다.
-- **macOS에서 처음 빌드할 때:** `flutter build ios`를 실행하면 `pod install`과 SwiftPM 해석이 이어서 진행된다. 이때 생기는 `ios/Podfile.lock`을 커밋한다.
-  - #38에서 처음 macOS로 빌드해 `Podfile.lock`, CocoaPods 연동(`project.pbxproj`, `Runner.xcworkspace`), SwiftPM `Package.resolved`를 커밋했다.
-  - Flutter 3.50.0 기준으로 iOS 플러그인이 모두 Swift Package로 연결되어 CocoaPods로는 `Flutter` pod만 설치된다. Flutter는 CocoaPods 연동을 없애도 된다고 안내한다.
+- **macOS에서 처음 빌드할 때:** CocoaPods는 필요 없다. `flutter build ios --flavor <flavor>`를 실행하면 SwiftPM이 패키지를 해석한다. `Package.resolved`(`Runner.xcodeproj`·`Runner.xcworkspace` 아래)가 바뀌면 커밋한다.
+  - #38에서 처음 macOS로 빌드할 때는 CocoaPods 연동이 함께 생겨 커밋했고, #52에서 `pod deintegrate`로 지웠다. 예전 체크아웃에 남은 `ios/Pods/`는 지워도 된다(`.gitignore` 대상).
 
 ## 5. 앱 코드
 

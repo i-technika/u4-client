@@ -43,7 +43,7 @@ milestone.md 마일스톤 체크리스트
 
 - Flutter 3.50.0 (`.fvmrc`). fvm을 쓰면 `fvm use`로 맞춥니다.
 - Android: JDK 17 이상, Android SDK platform 37
-- iOS: Xcode, CocoaPods (SwiftPM을 지원하지 않는 플러그인용)
+- iOS: Xcode. 플러그인은 Swift Package Manager로 연결되어 CocoaPods가 필요 없습니다 (#52)
 
 ## 실행
 
