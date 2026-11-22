@@ -41,28 +41,38 @@ class AppConfig {
   /// 최소 설정으로 모델을 한 번 만들며 [_Reader]가 읽은 키를 기록해 얻는다.
   /// 모델은 모든 키를 조건 없이 읽으므로 입력과 상관없이 같은 표가 나온다.
   /// 스키마와 정확히 같은지는 테스트가 확인한다.
+  ///
+  /// 최소 설정은 모델이 읽기 단계에서 하는 검사(필수 키, 타입, 형식)를 모두
+  /// 통과해야 한다. 필수 키를 늘리거나 읽기 단계에 범위 검사를 넣으면(#5)
+  /// 최소 설정도 함께 고친다. 어긋나면 사용자 설정 오류가 아닌 코드 버그로
+  /// [StateError]를 던진다.
   @visibleForTesting
   static final Map<String, Set<String>> knownKeys = () {
     final keys = <String, Set<String>>{};
-    // 필수 값만 채운 설정. 필수 키를 늘리면 여기도 채워야 한다.
-    _read(
-      _Reader(
-        const {
-          'flavor': 'dev',
-          'app': {
-            'name': 'x',
-            'startUrl': 'https://example.com/',
-            'allowedHosts': ['example.com'],
+    try {
+      _read(
+        _Reader(
+          const {
+            'flavor': 'dev',
+            'app': {
+              'name': 'x',
+              'startUrl': 'https://example.com/',
+              'allowedHosts': ['example.com'],
+            },
           },
-        },
-        r'$',
-        keys,
-      ),
-    );
+          r'$',
+          keys,
+        ),
+      );
+    } on AppConfigException catch (e) {
+      throw StateError('knownKeys용 최소 설정이 모델과 맞지 않습니다: ${e.message}');
+    }
     return Map<String, Set<String>>.unmodifiable(
       keys.map((path, set) => MapEntry(path, Set<String>.unmodifiable(set))),
     );
   }();
+
+  static final _identifier = RegExp(r'^[A-Za-z_$][A-Za-z0-9_$]*$');
 
   /// [knownKeys]에 없는 키(오타, 스키마에 없는 키)를 하위 object까지 모아 실패한다.
   static void _rejectUnknownKeys(Map<String, Object?> json) {
@@ -72,7 +82,11 @@ class AppConfig {
       for (final MapEntry(:key, :value) in map.entries) {
         final childPath = '$path.$key';
         if (!known.contains(key)) {
-          unknown.add(childPath);
+          // 아는 키는 모두 식별자라 '.'이 없다. 다른 키는 `$["a.b"]`로 적어
+          // 스키마에 있는 경로(`$.a.b`)와 헷갈리지 않게 한다.
+          unknown.add(
+            _identifier.hasMatch(key) ? childPath : '$path[${jsonEncode(key)}]',
+          );
         } else if (value is Map<String, Object?> &&
             knownKeys.containsKey(childPath)) {
           walk(value, childPath);
@@ -83,6 +97,7 @@ class AppConfig {
 
     walk(json, r'$');
     if (unknown.isNotEmpty) {
+      // 목록 구분자는 ', '. 괄호 표기 키는 JSON 문자열이라 구분자와 섞이지 않는다.
       throw AppConfigException('스키마에 없는 키: ${unknown.join(', ')}');
     }
   }
@@ -589,7 +604,7 @@ class ThemedColor {
 /// 스키마의 모든 키를 값과 상관없이 **조건 없이** 읽어야 한다
 /// (예: `enabled`가 true일 때만 `checkUrl`을 읽으면 `checkUrl`이 모르는 키가 된다).
 ///
-/// 키를 생략하면 기본값을 쓰지만, `null`을 직접 적으면 타입 오류다.
+/// 키를 생략하면 기본값을 쓰지만, `null`을 직접 적으면 실패한다.
 /// 스키마도 `null`을 허용하지 않는다.
 class _Reader {
   _Reader(this._map, this._path, [this._recorder]);
@@ -609,7 +624,7 @@ class _Reader {
     _recorder?.putIfAbsent(path, () => {});
     final v = _map[key];
     if (v == null) {
-      if (_map.containsKey(key)) throw _type(key, 'object');
+      if (_map.containsKey(key)) throw _null(key);
       return _Reader(const {}, path, _recorder);
     }
     if (v is! Map<String, Object?>) throw _type(key, 'object');
@@ -713,12 +728,15 @@ class _Reader {
     _record(key);
     final v = _map[key];
     if (v == null) {
-      if (_map.containsKey(key)) throw _type(key, typeName);
+      if (_map.containsKey(key)) throw _null(key);
       return null;
     }
     if (v is! T) throw _type(key, typeName);
     return v as T;
   }
+
+  AppConfigException _null(String key) =>
+      AppConfigException('$_path.$key: null은 쓸 수 없습니다 (생략하면 기본값을 씁니다)');
 
   AppConfigException _type(String key, String typeName) =>
       AppConfigException('$_path.$key는 $typeName이어야 합니다');

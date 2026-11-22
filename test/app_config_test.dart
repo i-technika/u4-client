@@ -84,7 +84,9 @@ void main() {
     test('prod에서 debuggable을 켜면 실패한다', () {
       expect(
         () => AppConfig.fromJson(prod(network: {'debuggable': true})),
-        throwsA(isA<AppConfigException>()),
+        _throwsConfigError(
+          'prod에서는 allowHttp, ignoreSslErrors, debuggable을 켤 수 없습니다',
+        ),
       );
     });
 
@@ -94,7 +96,7 @@ void main() {
           'http://example.com/';
       expect(
         () => AppConfig.fromJson(json),
-        throwsA(isA<AppConfigException>()),
+        _throwsConfigError('prod의 startUrl은 https여야 합니다'),
       );
     });
 
@@ -118,7 +120,7 @@ void main() {
       json['popup'] = {'maxDepth': '5'};
       expect(
         () => AppConfig.fromJson(json),
-        throwsA(isA<AppConfigException>()),
+        _throwsConfigError(r'$.popup.maxDepth는 integer이어야 합니다'),
       );
     });
 
@@ -129,20 +131,15 @@ void main() {
       };
       expect(
         () => AppConfig.fromJson(json),
-        throwsA(isA<AppConfigException>()),
+        _throwsConfigError(r'$.extras.forceUpdate.checkUrl이 필요합니다'),
       );
     });
   });
 
   group('모르는 키 (#4)', () {
     /// 보고된 경로 목록이 정확히 [paths]인지 본다 (정상 키가 함께 보고되는 회귀 방지).
-    Matcher unknownKeys(List<String> paths) => throwsA(
-      isA<AppConfigException>().having(
-        (e) => e.message,
-        'message',
-        '스키마에 없는 키: ${paths.join(', ')}',
-      ),
-    );
+    Matcher unknownKeys(List<String> paths) =>
+        _throwsConfigError('스키마에 없는 키: ${paths.join(', ')}');
 
     Map<String, Object?> sub(Map<String, Object?> json, String key) =>
         json[key]! as Map<String, Object?>;
@@ -229,13 +226,7 @@ void main() {
         final path = group == null ? '\$.$key' : '\$.$group.$key';
         expect(
           () => AppConfig.fromJson(json),
-          throwsA(
-            isA<AppConfigException>().having(
-              (e) => e.message,
-              'message',
-              startsWith('$path는 '),
-            ),
-          ),
+          _throwsConfigError('$path: null은 쓸 수 없습니다 (생략하면 기본값을 씁니다)'),
           reason: path,
         );
       }
@@ -248,14 +239,13 @@ void main() {
       json[r'$schema'] = 1;
       expect(
         () => AppConfig.fromJson(json),
-        throwsA(
-          isA<AppConfigException>().having(
-            (e) => e.message,
-            'message',
-            contains(r'$.$schema'),
-          ),
-        ),
+        _throwsConfigError(r'$.$schema는 string이어야 합니다'),
       );
+    });
+
+    test("'.'이 든 모르는 키는 괄호 표기로 알린다", () {
+      final json = readConfigJson(Flavor.dev)..['app.name'] = 'U4';
+      expect(() => AppConfig.fromJson(json), unknownKeys([r'$["app.name"]']));
     });
 
     test('모델이 읽는 키와 스키마의 키가 object마다 정확히 같다', () {
@@ -280,7 +270,7 @@ void main() {
 
 /// 스키마의 object 경로별 속성 이름 (예: `$.network` → `{secureScreen, ...}`).
 ///
-/// 모든 object가 `additionalProperties: false`인지도 확인한다. 로더는 모르는
+/// `properties`로 이어지는 모든 object가 `additionalProperties: false`인지도 확인한다. 로더는 모르는
 /// 키를 항상 거부하므로, 자유 키를 허용하는 object가 생기면 둘이 어긋난다.
 Map<String, Set<String>> _schemaKeys(Map<String, Object?> root) {
   final defs = root[r'$defs']! as Map<String, Object?>;
@@ -295,6 +285,15 @@ Map<String, Set<String>> _schemaKeys(Map<String, Object?> root) {
   final out = <String, Set<String>>{};
   void walk(Map<String, Object?> s, String path) {
     s = resolve(s);
+    // 로더와 이 순회는 properties로 이어지는 object만 다룬다. 배열 원소 object나
+    // 조합 키워드로 키를 정의하면 둘 다 놓치므로 테스트에서 막는다.
+    for (final k in ['allOf', 'anyOf', 'oneOf']) {
+      expect(s.containsKey(k), isFalse, reason: '$path: $k 미지원');
+    }
+    final items = s['items'];
+    if (items is Map<String, Object?>) {
+      expect(resolve(items)['type'], isNot('object'), reason: '$path[]');
+    }
     if (s['type'] != 'object') return;
     expect(s['additionalProperties'], isFalse, reason: path);
     final props = (s['properties'] ?? const {}) as Map<String, Object?>;
@@ -307,3 +306,8 @@ Map<String, Set<String>> _schemaKeys(Map<String, Object?> root) {
   walk(root, r'$');
   return out;
 }
+
+/// 메시지가 정확히 [message]인 [AppConfigException]을 던지는지 본다.
+Matcher _throwsConfigError(String message) => throwsA(
+  isA<AppConfigException>().having((e) => e.message, 'message', message),
+);

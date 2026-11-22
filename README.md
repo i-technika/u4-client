@@ -18,7 +18,7 @@
 - 마일스톤 브랜치 `milestone/m<N>`을 `main`에서 만들고, Draft PR로 유지합니다.
 - 서브이슈(`[M<N>-<순번>]`)는 `issue/<번호>-<키워드>` 브랜치에서 작업해 마일스톤 브랜치로 squash 머지합니다.
 - 마일스톤이 끝나면 PR을 Ready로 바꿔 전체 CI를 통과시킨 뒤 `main`에 merge 커밋으로 머지합니다.
-- CI: 마일스톤 브랜치 대상 PR은 `Sub-issue Linux CI`(analyze·test·dev APK), `main` 대상 PR은 `Milestone Full Multi-Platform CI`(analyze·test, Android 3개 flavor, iOS no-codesign)
+- CI: 마일스톤 브랜치 대상 PR은 `Sub-issue Linux CI`(analyze·test·dev APK·설정 스키마 검증), `main` 대상 PR은 `Milestone Full Multi-Platform CI`(analyze·test·설정 스키마 검증, Android 3개 flavor, iOS no-codesign). 설정 스키마 검증은 로컬에서도 `bash tool/validate_config.sh`로 돌릴 수 있습니다(의존성: `tool/requirements-ci.txt`)
 
 Claude Code에서는 `/open-ms <에픽번호>`, `/fix-issue <서브이슈번호>`, `/close-ms <에픽번호>`로 이 흐름을 실행합니다 (`.claude/skills/`).
 
