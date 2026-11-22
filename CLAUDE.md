@@ -26,10 +26,12 @@
 - `docs/`: 단계별 설계·결정 문서 (`phase-0-requirements.md`, `phase-1-setup.md`, ...)
 - `test/`: Dart 테스트. 공용 도구는 `test/helpers.dart` (#10에서 추가)
 - `test-page/`: 단계별 검증용 기능 테스트 HTML 페이지 (실행 방법은 README)
+- `tool/`: CI 보조 스크립트 (`validate_config.sh`: 설정 스키마 검증, #4)
 - `android/`, `ios/`
 
 ## 3. 코딩 원칙
 - 설정 값은 스키마(`config/app_config.schema.json`)와 Dart 모델을 함께 고친다. 새 설정에는 기본값과 로딩 테스트를 둔다.
+  - 로더는 스키마에 없는 키를 거부하므로, 모델은 스키마의 모든 키를 값과 상관없이 조건 없이 읽는다 (#4).
 - 플랫폼별로 동작이 다르면 코드 주석과 `docs/`에 적는다.
 - 커밋 전 항상 `flutter analyze`(이슈 0건)와 `flutter test`(전부 통과)를 확인한다.
 - 동작 확인 범위는 `flutter analyze`, `flutter test`, **Android 에뮬레이터**까지다. iOS 실기기·시뮬레이터 확인은 macOS에서 iOS scheme을 구성할 때 한꺼번에 하므로 이슈별로 하지 않고, PR에 미확인 항목으로도 적지 않는다. 단, 변경이 iOS 전용 코드(`ios/`, Info.plist, Podfile)에만 있어 Android로 전혀 검증되지 않으면 그 사실을 한 줄로 알린다.

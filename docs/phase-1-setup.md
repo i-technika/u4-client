@@ -121,6 +121,14 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - `lib/config/app_config.dart`: 0단계 스키마를 그대로 옮긴 불변 모델이다.
   - 생략한 값은 스키마 기본값으로 채운다.
   - 모르는 enum 값이나 틀린 타입은 JSON 경로와 함께 시작 시 바로 실패한다.
+  - 스키마에 없는 키(오타 포함)는 값을 읽기 전에 경로를 모두 모아 실패한다(#4). 오타 난 키가 조용히 무시되어 기본값이 쓰이는 것을 막고, 필수 키 오타(`startURL`)도 "필요합니다" 대신 오타 위치로 알린다.
+    - 아는 키 목록(`AppConfig.knownKeys`)은 최소 설정으로 모델을 한 번 만들며 읽은 키를 기록해 얻는다. 그래서 모델은 스키마의 모든 키를 조건 없이 읽어야 한다.
+    - 이 목록이 스키마의 object별 속성과 정확히 같은지, `properties`로 이어지는 모든 object가 `additionalProperties: false`인지는 테스트가 확인한다. 스키마와 모델 중 한쪽만 고치면 테스트가 실패한다.
+    - 배열 원소 object나 `allOf`·`anyOf`·`oneOf`로 키를 정의하는 스키마는 로더가 지원하지 않으며, 테스트가 막는다.
+    - 최소 설정이 모델의 필수 키나 읽기 단계 검사와 어긋나면 `StateError`(코드 버그)로 실패한다. 필수 키를 늘리거나 읽기 단계에 범위 검사를 넣을 때(#5) 함께 고친다.
+  - 아는 키에 `null`을 직접 적으면 기본값을 쓰지 않고 실패한다(생략은 허용).
+  - 로더가 다시 검사하는 것: 모르는 키, 필수 키, 타입, enum 값, 색상 형식, URL에 scheme·host가 있는지, `allowedHosts`가 비었는지, 강제 업데이트의 `checkUrl`, prod 제약.
+  - 로더가 검사하지 않는 것(범위, `hostPattern`, URL scheme 종류, `uniqueItems` 등)은 CI가 막는다. `tool/validate_config.sh`가 `check-jsonschema`로 번들 설정 파일을 검증한다. `format: uri` 검사 패키지(`rfc3986-validator`)가 빠지면 잘못된 URI도 통과하므로, 스크립트는 fixture가 uri 형식 오류 하나로만 실패하는지 확인한다. 버전은 `tool/requirements-ci.txt`에 고정했다. 런타임 범위 검사는 #5에서 다룬다.
   - prod 제약(https, 개발용 옵션 금지)을 한 번 더 검사한다.
   - **권한 (#3):** 설정 파일은 플랫폼 공통이라 플랫폼마다 건너뛸 권한이 있다.
     - 권한 요청 코드(8·9·11·13단계)는 시작 시 목록을 `PermissionsConfig.requestOnLaunchOn(defaultTargetPlatform)`으로만 받는다. 설정 원본 목록은 공개하지 않는다.
@@ -129,15 +137,15 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
     - `deniedGuide`는 `isPermanentlyDenied`일 때만 설정 앱 이동을 안내한다.
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
-  - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류도 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 확인 화면과 설정 실패 화면 위젯 테스트(30개).
+  - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류를 포함해 모든 설정 오류에 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 모르는 키와 스키마·모델 일치(#4), 확인 화면과 설정 실패 화면 위젯 테스트(45개).
 
 ## 6. 확인 결과
 
 | 항목 | 결과 |
 |---|---|
 | `flutter analyze` | 이슈 없음 |
-| `flutter test` | 30개 통과 |
+| `flutter test` | 45개 통과 (#4 반영 후) |
 | `flutter build apk --debug --flavor dev` / `stg` | 성공 |
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |

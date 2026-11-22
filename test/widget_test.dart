@@ -33,6 +33,16 @@ Matcher _configError(String message) => isA<AppConfigException>().having(
   contains(message),
 );
 
+Matcher _configErrorExact(String message) =>
+    isA<AppConfigException>().having((e) => e.message, 'message', message);
+
+/// dev 설정을 [edit]로 고쳐 dev 경로로 돌려주는 bundle.
+_StringBundle _bundleWith(void Function(Map<String, Object?> json) edit) {
+  final json = readConfigJson(Flavor.dev);
+  edit(json);
+  return _StringBundle(Flavor.dev.assetPath, jsonEncode(json));
+}
+
 void main() {
   testWidgets('설정 확인 화면에 flavor와 앱 이름이 보인다', (tester) async {
     final config = AppConfig.fromJson(readConfigJson(Flavor.dev));
@@ -95,6 +105,24 @@ void main() {
         Flavor.dev,
         _StringBundle(dev, '[]'),
         _configError('$dev: 최상위가 object가 아닙니다'),
+      ),
+      // fromJson의 각 단계(키 검사, 값 읽기, _validate) 오류에 파일 경로가 붙는다.
+      '설정에 모르는 키가 있으면': (
+        Flavor.dev,
+        _bundleWith((json) => json['typo'] = true),
+        _configErrorExact('$dev: 스키마에 없는 키: \$.typo'),
+      ),
+      '설정 값의 타입이 틀리면': (
+        Flavor.dev,
+        _bundleWith((json) => json['popup'] = {'maxDepth': '5'}),
+        _configErrorExact('$dev: \$.popup.maxDepth는 integer이어야 합니다'),
+      ),
+      '설정 값이 검증을 통과하지 못하면': (
+        Flavor.dev,
+        _bundleWith(
+          (json) => (json['app']! as Map<String, Object?>)['allowedHosts'] = [],
+        ),
+        _configErrorExact('$dev: \$.app.allowedHosts가 비어 있습니다'),
       ),
     };
     cases.forEach((name, c) {

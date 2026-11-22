@@ -7,7 +7,9 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 /// `config/app_config.<flavor>.json`을 읽어 만든 앱 설정.
 ///
 /// 구조와 기본값은 `config/app_config.schema.json`을 따른다. 스키마 검증은
-/// 에디터와 CI에서 하고, 여기서는 기본값 채우기·enum 변환·prod 제약만 다시 검사한다.
+/// 에디터와 CI(`tool/validate_config.sh`)에서 하고, 여기서는 모르는 키 거부·
+/// 기본값 채우기·타입과 enum 변환·prod 제약 등을 다시 검사한다
+/// (항목은 docs/phase-1-setup.md 5장).
 @immutable
 class AppConfig {
   const AppConfig({
@@ -26,8 +28,84 @@ class AppConfig {
   });
 
   factory AppConfig.fromJson(Map<String, Object?> json) {
-    final r = _Reader(json, r'$');
-    final config = AppConfig(
+    // 값을 읽기 전에 모르는 키부터 검사한다. 그래야 필수 키 오타(startURL)가
+    // "startUrl이 필요합니다"나 다른 값의 타입 오류에 가려지지 않는다.
+    _rejectUnknownKeys(json);
+    final config = _read(_Reader(json, r'$'));
+    config._validate();
+    return config;
+  }
+
+  /// 모델이 읽는 키를 object 경로별로 모은 표 (예: `$.network` → `{secureScreen, ...}`).
+  ///
+  /// 최소 설정으로 모델을 한 번 만들며 [_Reader]가 읽은 키를 기록해 얻는다.
+  /// 모델은 모든 키를 조건 없이 읽으므로 입력과 상관없이 같은 표가 나온다.
+  /// 스키마와 정확히 같은지는 테스트가 확인한다.
+  ///
+  /// 최소 설정은 모델이 읽기 단계에서 하는 검사(필수 키, 타입, 형식)를 모두
+  /// 통과해야 한다. 필수 키를 늘리거나 읽기 단계에 범위 검사를 넣으면(#5)
+  /// 최소 설정도 함께 고친다. 어긋나면 사용자 설정 오류가 아닌 코드 버그로
+  /// [StateError]를 던진다.
+  @visibleForTesting
+  static final Map<String, Set<String>> knownKeys = () {
+    final keys = <String, Set<String>>{};
+    try {
+      _read(
+        _Reader(
+          const {
+            'flavor': 'dev',
+            'app': {
+              'name': 'x',
+              'startUrl': 'https://example.com/',
+              'allowedHosts': ['example.com'],
+            },
+          },
+          r'$',
+          keys,
+        ),
+      );
+    } on AppConfigException catch (e) {
+      throw StateError('knownKeys용 최소 설정이 모델과 맞지 않습니다: ${e.message}');
+    }
+    return Map<String, Set<String>>.unmodifiable(
+      keys.map((path, set) => MapEntry(path, Set<String>.unmodifiable(set))),
+    );
+  }();
+
+  static final _identifier = RegExp(r'^[A-Za-z_$][A-Za-z0-9_$]*$');
+
+  /// [knownKeys]에 없는 키(오타, 스키마에 없는 키)를 하위 object까지 모아 실패한다.
+  static void _rejectUnknownKeys(Map<String, Object?> json) {
+    final unknown = <String>[];
+    void walk(Map<String, Object?> map, String path) {
+      final known = knownKeys[path]!;
+      for (final MapEntry(:key, :value) in map.entries) {
+        final childPath = '$path.$key';
+        if (!known.contains(key)) {
+          // 아는 키는 모두 식별자라 '.'이 없다. 다른 키는 `$["a.b"]`로 적어
+          // 스키마에 있는 경로(`$.a.b`)와 헷갈리지 않게 한다.
+          unknown.add(
+            _identifier.hasMatch(key) ? childPath : '$path[${jsonEncode(key)}]',
+          );
+        } else if (value is Map<String, Object?> &&
+            knownKeys.containsKey(childPath)) {
+          walk(value, childPath);
+        }
+        // object가 아닌 값이 object 자리에 오면 읽을 때 타입 오류로 알린다.
+      }
+    }
+
+    walk(json, r'$');
+    if (unknown.isNotEmpty) {
+      // 목록 구분자는 ', '. 괄호 표기 키는 JSON 문자열이라 구분자와 섞이지 않는다.
+      throw AppConfigException('스키마에 없는 키: ${unknown.join(', ')}');
+    }
+  }
+
+  static AppConfig _read(_Reader r) {
+    // 에디터용 스키마 참조. 값은 쓰지 않지만 아는 키로 기록한다.
+    r.optString(r'$schema');
+    return AppConfig(
       flavor: r.choice('flavor', Flavor.values),
       app: AppInfo._(r.child('app')),
       splash: SplashConfig._(r.child('splash')),
@@ -41,14 +119,12 @@ class AppConfig {
       network: NetworkConfig._(r.child('network')),
       extras: ExtrasConfig._(r.child('extras')),
     );
-    config._validate();
-    return config;
   }
 
   /// 번들된 flavor 설정 파일을 읽는다.
   ///
-  /// asset 누락, JSON 형식 오류, 최상위 타입 오류도 파일 경로를 붙여
-  /// [AppConfigException]으로 던진다.
+  /// asset 누락, JSON 형식 오류, 최상위 타입 오류를 포함해 모든 설정 오류에
+  /// 파일 경로를 붙여 [AppConfigException]으로 던진다.
   static Future<AppConfig> load(Flavor flavor, {AssetBundle? bundle}) async {
     final path = flavor.assetPath;
     final String text;
@@ -66,7 +142,12 @@ class AppConfig {
     if (json is! Map<String, Object?>) {
       throw AppConfigException('$path: 최상위가 object가 아닙니다');
     }
-    final config = AppConfig.fromJson(json);
+    final AppConfig config;
+    try {
+      config = AppConfig.fromJson(json);
+    } on AppConfigException catch (e) {
+      throw AppConfigException('$path: ${e.message}');
+    }
     if (config.flavor != flavor) {
       throw AppConfigException('$path의 flavor가 ${config.flavor.name}입니다');
     }
@@ -568,19 +649,36 @@ class ThemedColor {
 }
 
 /// 경로를 붙여 에러를 알려 주는 JSON 읽기 도우미.
+///
+/// [AppConfig.knownKeys]는 이 reader가 읽은 키를 기록해 만든다. 그래서 모델은
+/// 스키마의 모든 키를 값과 상관없이 **조건 없이** 읽어야 한다
+/// (예: `enabled`가 true일 때만 `checkUrl`을 읽으면 `checkUrl`이 모르는 키가 된다).
+///
+/// 키를 생략하면 기본값을 쓰지만, `null`을 직접 적으면 실패한다.
+/// 스키마도 `null`을 허용하지 않는다.
 class _Reader {
-  _Reader(this._map, this._path);
+  _Reader(this._map, this._path, [this._recorder]);
 
   final Map<String, Object?> _map;
   final String _path;
 
-  /// 하위 object를 읽는 reader. JSON object 하나는 reader 하나로 읽도록
-  /// 같은 [key]로는 한 번만 부른다.
+  /// object 경로별로 읽은 키를 기록할 곳. [AppConfig.knownKeys]를 만들 때만 쓴다.
+  final Map<String, Set<String>>? _recorder;
+
+  void _record(String key) => _recorder?.putIfAbsent(_path, () => {}).add(key);
+
+  /// 하위 object를 읽는 reader. 생략한 object는 빈 object로 읽어 기본값을 채운다.
   _Reader child(String key) {
+    _record(key);
+    final path = '$_path.$key';
+    _recorder?.putIfAbsent(path, () => {});
     final v = _map[key];
-    if (v == null) return _Reader(const {}, '$_path.$key');
+    if (v == null) {
+      if (_map.containsKey(key)) throw _null(key);
+      return _Reader(const {}, path, _recorder);
+    }
     if (v is! Map<String, Object?>) throw _type(key, 'object');
-    return _Reader(v, '$_path.$key');
+    return _Reader(v, path, _recorder);
   }
 
   bool boolean(String key, bool fallback) =>
@@ -677,11 +775,18 @@ class _Reader {
   }
 
   T? _get<T>(String key, String typeName) {
+    _record(key);
     final v = _map[key];
-    if (v == null) return null;
+    if (v == null) {
+      if (_map.containsKey(key)) throw _null(key);
+      return null;
+    }
     if (v is! T) throw _type(key, typeName);
     return v as T;
   }
+
+  AppConfigException _null(String key) =>
+      AppConfigException('$_path.$key: null은 쓸 수 없습니다 (생략하면 기본값을 씁니다)');
 
   AppConfigException _type(String key, String typeName) =>
       AppConfigException('$_path.$key는 $typeName이어야 합니다');
