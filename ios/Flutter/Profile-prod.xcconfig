@@ -1,0 +1,4 @@
+// Profile-prod build configuration (#38). scheme `prod`가 이 configuration을 쓴다.
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile-prod.xcconfig"
+#include "Generated.xcconfig"
+#include "AppInfo-prod.xcconfig"

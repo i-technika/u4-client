@@ -63,14 +63,16 @@
 | | dev | stg | prod |
 |---|---|---|---|
 | Android applicationId | `com.itechnika.u4.dev` | `com.itechnika.u4.stg` | `com.itechnika.u4` |
-| 설정 `app.name`, Android 앱 이름 | U4 DEV | U4 STG | U4 |
-| iOS 앱 이름 | U4 | U4 | U4 |
+| iOS bundle ID | `com.itechnika.u4.dev` | `com.itechnika.u4.stg` | `com.itechnika.u4` |
+| 설정 `app.name`, Android·iOS 앱 이름 | U4 DEV | U4 STG | U4 |
+| iOS scheme / build configuration | `dev` / `Debug-dev`·`Release-dev`·`Profile-dev` | `stg` / `*-stg` | `prod` / `*-prod` |
 | versionName | `pubspec.yaml`의 `version`과 같음 | 같음 | 같음 |
 | 설정 파일 | `config/app_config.dev.json` | `config/app_config.stg.json` | `config/app_config.prod.json` |
-| HTTP(cleartext) | 허용 | 차단 | 차단 |
+| Android HTTP(cleartext) | 허용 | 차단 | 차단 |
+| iOS HTTP(ATS) | 로컬 네트워크만 허용 | 같음 | 같음 |
 
 - 앱 ID와 앱 이름은 임시값이다(0단계 문서 5장 "확인이 필요한 사항").
-- Android는 `productFlavors`로 나눠, 세 flavor를 한 기기에 함께 설치할 수 있다.
+- Android는 `productFlavors`, iOS는 scheme과 build configuration으로 나눠, 세 flavor를 한 기기에 함께 설치할 수 있다.
 - versionName은 flavor와 플랫폼에 관계없이 같다(예: `1.0.0`). Android flavor에 `versionNameSuffix`(`-dev` 등)를 두지 않는다.
   - `userAgentSuffix`의 `{version}`이 Android와 iOS에서 같아야 한다.
   - `extras.forceUpdate`는 semver로 비교하는데, `1.0.0-dev`는 pre-release라 `1.0.0`보다 낮게 취급되어 업데이트가 강제될 수 있다.
@@ -79,10 +81,10 @@
   - Android: `build.gradle.kts`가 빌드 시 `config/app_config.<flavor>.json`을 읽어 `manifestPlaceholders["appName"]`(매니페스트 `android:label`)에 넣는다. JSON만 고치면 된다.
     - `android:label`로 그대로 쓸 수 없는 이름은 빌드가 실패한다: 빈 이름, 앞 공백을 빼고 `@`·`?`로 시작(aapt가 리소스 참조로 해석), `\`(aapt 이스케이프), `${`(매니페스트 placeholder), 글자·숫자가 하나도 없는 이름.
     - 설정 단계에서 세 flavor 파일을 모두 읽으므로, 한 flavor 파일이 없거나 깨져도 모든 flavor 빌드가 실패한다. 오류에는 파일 경로가 붙는다.
-  - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo.xcconfig`(Debug·Release xcconfig가 포함)에 손으로 적는다. 아래 "iOS flavor는 아직 없다" 때문에 flavor와 관계없이 prod 이름(U4)이 표시된다. **prod `app.name`을 바꾸면 `AppInfo.xcconfig`도 같이 고친다.**
+  - iOS: Info.plist의 `CFBundleDisplayName`은 `$(APP_DISPLAY_NAME)`을 참조하고, 값은 `ios/Flutter/AppInfo-<flavor>.xcconfig`에 손으로 적는다(아래 "iOS flavor"). Xcode는 빌드 시 JSON을 읽지 않으므로 **`app.name`을 바꾸면 그 flavor의 `AppInfo-<flavor>.xcconfig`도 같이 고친다.**
   - `test/app_display_name_test.dart`가 연결이 끊기는 경우를 잡는다.
     - Android: 모든 매니페스트의 `android:label`(activity 포함)이 `${appName}` 하나뿐인지, Gradle의 `"appName"`이 `productFlavors.configureEach`의 `appNameOf(name)` 대입 한 곳에만 있는지, 번들 설정의 `app.name`이 위 규칙을 지키는지. `appNameOf`가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다.
-    - iOS: `AppInfo.xcconfig` 값이 prod `app.name`과 같은지, Debug·Release xcconfig, Xcode 프로젝트, 지역화 `InfoPlist.strings`가 이름을 덮어쓰지 않는지.
+    - iOS: `AppInfo-<flavor>.xcconfig`의 이름이 그 flavor의 `app.name`과, bundle ID가 Android applicationId와 같은지, build configuration·scheme이 다른 flavor의 xcconfig를 쓰지 않는지, configuration xcconfig·Xcode 프로젝트·지역화 `InfoPlist.strings`가 값을 덮어쓰지 않는지.
   - CI가 빌드한 APK의 런처 이름을 JSON과 비교한다 (#39). `tool/check_android_app_label.sh`가 `aapt2 dump badging`에서 `application-label`, 로캘별 `application-label-<로캘>`(리소스에 있는 로캘마다 나온다), `launchable-activity`·`leanback-launchable-activity`의 `label`을 읽어 APK 파일 이름(`app-<flavor>-<buildType>.apk`)의 flavor JSON `app.name`과 비교한다. 값이 하나라도 다르면 기대값·실제값을 출력하고 실패한다. 기본 라벨·`launchable-activity` 줄이 없거나, 라벨 줄인데 값을 읽지 못한 줄(출력 형식 변화)이 있으면 관련 덤프 줄을 출력하고 실패한다.
     - activity 라벨이 비어 있으면 앱 라벨을 물려받으므로 통과로 본다. 속성이 없는 것과 `android:label=""`은 badging으로 구분되지 않는데, 후자는 위 정적 테스트가 막는다. `application: label=` 줄은 `application-label`과 같은 값이라 보지 않는다.
     - Sub-issue Linux CI는 dev·prod debug APK를, Milestone Full CI는 dev·stg·prod release APK를 검사한다. stg만 달라지는 회귀는 Milestone Full CI에서 드러난다.
@@ -90,14 +92,24 @@
     - 판정 로직은 매번 내장 fixture로 먼저 확인한다. 정상 덤프(이름에 `'`·`"`·탭·CR·`label='`·`icon='` 포함, CRLF 출력, `banner=`가 붙은 TV activity 줄)는 통과하고, 라벨 하나가 다르거나(로캘·TV activity 포함, 숫자 표기·뒤 공백만 다른 경우 포함) 라벨 줄이 빠지거나 값을 읽을 수 없는 덤프는 실패해야 한다. JSON → aapt2 표기 변환과 파일 이름 → flavor 변환도 같이 확인한다.
       - 탭·CR 등이 든 이름은 파서가 값을 자르지 않는지 보려는 것이다. 그런 이름이 실제 빌드에서 그대로 남는다는 뜻은 아니다(매니페스트에 리터럴 탭을 쓰면 aapt2가 공백으로 바꾼다). 바뀌면 불일치로 실패한다.
   - Gradle은 JSON을 UTF-8로 읽는다. JVM 기본 문자셋이 UTF-8이 아니어도 한글 이름이 깨지지 않는다.
-- 실행 시 flavor는 `Flavor.current`가 정한다. Android는 `--flavor`, iOS는 `--dart-define=FLAVOR=`로 정하고, release 빌드에서 둘 다 없으면 시작하지 않는다.
+- 실행 시 flavor는 `Flavor.current`가 정한다. Android·iOS 모두 `--flavor` 값을 Flutter가 넘겨 주는 `appFlavor`로 읽고, release 빌드에서 없으면 시작하지 않는다. 예전 iOS용 `--dart-define=FLAVOR=`는 #38에서 없앴다(bundle ID와 다른 flavor 설정을 읽는 빌드를 막기 위해).
+  - 값이 `--flavor`와 같으면 무시한다. 다르거나 `--flavor` 없이 넘기면 빌드는 되지만 앱이 설정 오류 화면(`ConfigErrorApp`)으로 시작한다. 빌드·배포 스크립트에 남아 있으면 지운다.
+  - 판정 규칙은 `Flavor.resolve`에 있고 `test/flavor_test.dart`가 확인한다.
 - 세 설정 파일은 모두 asset으로 번들된다. 비밀 값이 없어서 그렇게 했지만, 설정에 민감한 값이 들어가게 되면 flavor별 asset으로 나눠야 한다.
 
-### iOS flavor는 아직 없다
+### iOS flavor (#38)
 
-iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define`으로만 고른다. flavor별 bundle ID와 앱 이름을 주려면 Xcode에서 build configuration(`Debug-dev` 등)과 scheme을 만들어야 하는데, Windows에서는 Xcode 프로젝트를 안전하게 수정할 수 없어 macOS 환경에서 이어서 한다.
+Flutter의 iOS flavor 규칙(scheme 이름 = flavor, build configuration 이름 = `<모드>-<flavor>`)을 따른다. macOS에서 만들었다.
 
-flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME`을 그 flavor의 `app.name`으로 덮어쓴다. 그때 `test/app_display_name_test.dart`의 "덮어쓰지 않는다" 검사를 flavor별 xcconfig 값이 그 flavor의 `app.name`과 같은지 보는 검사로 바꾼다. 이 작업은 #38에서 한다.
+- scheme `dev`·`stg`·`prod`만 있다. flavor 없는 `Runner` scheme은 지웠으므로 `--flavor` 없이 iOS를 빌드할 수 없다(Android와 같다).
+- build configuration은 `Debug`·`Release`·`Profile` × flavor 9개다. 프로젝트·Runner·RunnerTests 모두 같은 9개를 가진다.
+- xcconfig 구성 (`ios/Flutter/`):
+  - `<모드>-<flavor>.xcconfig`: Runner의 각 configuration이 쓴다. 그 configuration의 Pods xcconfig, `Generated.xcconfig`, `AppInfo-<flavor>.xcconfig`를 포함만 한다.
+  - `AppInfo-<flavor>.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER`와 `APP_DISPLAY_NAME`. Xcode 프로젝트(`project.pbxproj`)는 Runner의 bundle ID를 정하지 않는다.
+- `ios/Podfile`의 `project` 매핑에 9개 configuration을 모두 적는다. 새 configuration을 만들면 같이 고친다.
+- Xcode에서 scheme이나 configuration을 추가·복제하면 `test/app_display_name_test.dart`가 목록·xcconfig 연결이 어긋난 것을 잡는다.
+- `tool/check_ios_flavors.sh`는 9개 configuration(기기·시뮬레이터 SDK 각각)과 3개 scheme에서 `xcodebuild -showBuildSettings`가 계산한 최종 bundle ID·앱 이름·configuration을 `AppInfo-<flavor>.xcconfig`와 비교한다. 위 테스트는 파일 텍스트를 보므로, 다른 xcconfig나 SDK 조건을 거쳐 값이 바뀌는 경우는 이 스크립트가 잡는다. Milestone Full CI의 iOS job이 실행한다.
+- 실기기 설치용 서명(Team, flavor별 App ID·프로비저닝)은 아직 정하지 않았다. M1 종료 전 실기기 점검(#16) 때 정한다.
 
 ## 3. Android 설정
 
@@ -130,7 +142,7 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
 ## 4. iOS 설정
 
 - **최소 버전 iOS 16** (`IPHONEOS_DEPLOYMENT_TARGET`, Podfile `platform`).
-- **플러그인 연결:** 기본은 Swift Package Manager다. `flutter_inappwebview_ios`처럼 SwiftPM을 지원하지 않는 플러그인만 CocoaPods로 설치되므로 `ios/Podfile`을 미리 두었다.
+- **플러그인 연결:** 기본은 Swift Package Manager다. SwiftPM을 지원하지 않는 플러그인을 대비해 `ios/Podfile`을 두었지만, Flutter 3.50.0 기준으로 `flutter_inappwebview_ios`(1.2.0-beta.3)를 포함한 모든 플러그인이 SwiftPM으로 연결되어 CocoaPods로는 `Flutter` pod만 설치된다(#38에서 확인).
 - **`permission_handler` 권한 매크로:**
   - SwiftPM으로 설치되면 Info.plist의 `NS*UsageDescription` 키를 보고 자동으로 켠다.
   - CocoaPods로 설치될 때를 대비해 Podfile `post_install`에도 같은 목록(위치, 카메라, 마이크, 사진, 알림)을 넣었다. 두 목록은 같게 유지한다.
@@ -140,6 +152,8 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
   - `LSApplicationQueriesSchemes`: `tel`, `sms`, `mailto`.
   - `NSAllowsLocalNetworking`: 로컬 테스트 페이지용. App Store 심사에서 허용되는 예외다.
 - **macOS에서 처음 빌드할 때:** `flutter build ios`를 실행하면 `pod install`과 SwiftPM 해석이 이어서 진행된다. 이때 생기는 `ios/Podfile.lock`을 커밋한다.
+  - #38에서 처음 macOS로 빌드해 `Podfile.lock`, CocoaPods 연동(`project.pbxproj`, `Runner.xcworkspace`), SwiftPM `Package.resolved`를 커밋했다.
+  - Flutter 3.50.0 기준으로 iOS 플러그인이 모두 Swift Package로 연결되어 CocoaPods로는 `Flutter` pod만 설치된다. Flutter는 CocoaPods 연동을 없애도 된다고 안내한다.
 
 ## 5. 앱 코드
 
@@ -150,10 +164,42 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
     - 아는 키 목록(`AppConfig.knownKeys`)은 최소 설정으로 모델을 한 번 만들며 읽은 키를 기록해 얻는다. 그래서 모델은 스키마의 모든 키를 조건 없이 읽어야 한다.
     - 이 목록이 스키마의 object별 속성과 정확히 같은지, `properties`로 이어지는 모든 object가 `additionalProperties: false`인지는 테스트가 확인한다. 스키마와 모델 중 한쪽만 고치면 테스트가 실패한다.
     - 배열 원소 object나 `allOf`·`anyOf`·`oneOf`로 키를 정의하는 스키마는 로더가 지원하지 않으며, 테스트가 막는다.
-    - 최소 설정이 모델의 필수 키나 읽기 단계 검사와 어긋나면 `StateError`(코드 버그)로 실패한다. 필수 키를 늘리거나 읽기 단계에 범위 검사를 넣을 때(#5) 함께 고친다.
+    - 최소 설정이 모델의 필수 키나 읽기 단계 검사(범위·형식 포함)와 어긋나면 `StateError`(코드 버그)로 실패한다. 필수 키나 읽기 단계 검사를 늘릴 때 함께 고친다.
   - 아는 키에 `null`을 직접 적으면 기본값을 쓰지 않고 실패한다(생략은 허용).
-  - 로더가 다시 검사하는 것: 모르는 키, 필수 키, 타입, enum 값, 색상 형식, URL에 scheme·host가 있는지, `allowedHosts`가 비었는지, 강제 업데이트의 `checkUrl`, prod 제약.
-  - 로더가 검사하지 않는 것(범위, `hostPattern`, URL scheme 종류, `uniqueItems` 등)은 CI가 막는다. `tool/validate_config.sh`가 `check-jsonschema`로 번들 설정 파일을 검증한다. `format: uri` 검사 패키지(`rfc3986-validator`)가 빠지면 잘못된 URI도 통과하므로, 스크립트는 fixture가 uri 형식 오류 하나로만 실패하는지 확인한다. 버전은 `tool/requirements-ci.txt`에 고정했다. 런타임 범위 검사는 #5에서 다룬다.
+  - 로더가 다시 검사하는 것: 모르는 키, 필수 키, 타입, enum 값, 색상 형식, URL에 scheme·host가 있는지, `allowedHosts`가 비었는지, 강제 업데이트의 `checkUrl`, prod 제약, 그리고 아래 범위·형식 제약(#5).
+  - **범위·형식 (#5):** 스키마의 값 제약도 로더가 다시 검사한다. CI를 거치지 않은 빌드가 `popup.maxDepth: 0`(팝업이 안 열림)이나 `splash.maxWaitMs: -1`(스플래시 즉시 타임아웃) 같은 값으로 오류 없이 시작하는 것을 막는다.
+    - `minimum`·`maximum`: `*Ms` 값 0~3600000(1시간), `popup.maxDepth` 1~10, `network.retry.maxAttempts` 0 이상. `_Reader.integer(min:, max:)`로 읽고, 모델 기본값도 같이 검사한다.
+      - `*Ms` 상한(`$defs.ms`의 `maximum`)은 #5에서 스키마에 새로 넣었다. 1시간은 실사용에 충분한 정책 값이다(넘침 지점은 약 9.2e15ms).
+        - 상한이 없으면 아주 큰 값에서 `Duration`의 마이크로초 계산이 int64를 넘어 음수 지연이 된다. 그러면 `-1`과 같은 즉시 타임아웃이 난다.
+        - `network.retry.maxAttempts`에는 아직 상한이 없다.
+    - `pattern`: 모든 flavor의 `startUrl`은 원문이 소문자 `http://`·`https://`로 시작해야 한다. 스키마 pattern은 대소문자를 구분하는데 `Uri`는 scheme을 소문자로 바꾸므로, 파싱 전 원문으로 본다. `allowedHosts`·`externalHosts`·`deeplink.domains`의 원소는 `hostPattern`을 따라야 한다.
+    - `uniqueItems`: 위 세 호스트 목록과 `permissions.requestOnLaunch`의 중복을 거부한다. 그래서 `requestOnLaunchOn()`이 같은 권한을 두 번 돌려주지 않는다. 중복은 원소 형식·enum 검사 뒤에 보므로, `["bogus", "bogus"]`는 "알 수 없는 값"으로 알린다.
+    - `minLength`: `app.name`의 빈 문자열을 거부한다.
+    - URL(`startUrl`, `checkUrl`): scheme·host가 없거나 포트가 음수이거나 int 범위를 넘으면 `URL 형식 오류`로 실패한다.
+      - `Uri.tryParse`는 큰 포트를 받아 두었다가 `port`를 처음 읽을 때 `FormatException`을 던진다.
+      - 로더가 미리 읽어 거르지 않으면 이 예외가 `AppConfigException` 밖으로 새어, 오류 화면 대신 앱이 죽는다.
+    - 오류는 경로와 값을 함께 알린다. 문자열 값은 JSON 표기로 적어 빈 문자열과 개행이 보이게 한다 (예: `$.popup.maxDepth: 1 이상 10 이하여야 합니다 (0)`, `$.app.allowedHosts[1]: 중복된 값 ("example.com")`).
+    - 스키마와 로더가 어긋나지 않는지는 테스트가 스키마를 읽어 확인한다.
+      - **스냅샷:** 스키마 전체(배열 원소 `items`, `if`/`then` 안 포함)의 값 제약을 `<경로> <키워드>` → 값으로 뽑는다. 이 스냅샷이 테스트에 손으로 적은 "로더가 검사하도록 맞춘 목록"과 정확히 같아야 한다.
+        - 스키마에 제약을 더하거나 바꾸면 테스트가 실패한다(예: `checkUrl`에 `pattern`, prod `then`에 `maximum`이나 `additionalProperties`). 그때 로더 검사와 목록을 함께 고친다.
+        - `type`·`default`는 스냅샷 범위 밖이다.
+      - **동작:** 필드마다 값을 넣어 본다. 스키마와 로더 중 어느 쪽만 바뀌어도 잡는다.
+        - `minimum`·`maximum`은 경계값과 ±1을 넣는다. 경계가 없는 쪽은 아주 큰(작은) 값이 통과하는지 본다.
+        - `uniqueItems`는 중복을, `minLength`는 빈 문자열을 넣는다. 제약이 없는 문자열은 빈 문자열이 통과하는지 본다.
+        - `hostPattern` 원소를 넣어 본다.
+        - enum 필드는 스키마의 모든 값을 받는지 본다. 모르는 값 오류에 나오는 허용값 목록이 스키마 enum과 같은지도 본다.
+      - **문자열:** 로더의 pattern 문자열(`AppConfig.schemaPatterns`)이 스키마와 같은지 본다.
+      - **키워드:** 스키마가 로더가 모르는 키워드(`maxLength`, `exclusiveMinimum` 등)를 쓰거나, `$ref` 옆에 값 제약을 두면(2020-12에서는 둘 다 적용되므로 단순 병합과 의미가 다르다) 테스트가 실패한다.
+  - CI와 로더의 판정이 다른 경우
+    - **로더가 더 느슨한 것:** `format: uri`의 세부 문법뿐이다(값 제약 기준, `type`은 #4 테스트 영역). 로더는 scheme·host·포트만 본다. 이것은 CI가 막는다.
+      - 로더는 CI가 거부하는 URL을 고쳐 쓰기도 한다(`\`를 `/`로, `%`·`#` 인코딩, 끝 개행을 `%0A`로). 그래서 CI를 거치지 않으면 다른 URL을 로딩할 수 있다.
+      - `tool/validate_config.sh`가 `check-jsonschema`로 번들 설정 파일을 검증한다.
+      - `format: uri` 검사 패키지(`rfc3986-validator`)가 빠지면 잘못된 URI도 통과한다. 그래서 스크립트는 fixture가 uri 형식 오류 하나로만 실패하는지 확인한다.
+      - 버전은 `tool/requirements-ci.txt`에 고정했다.
+    - **로더가 더 엄격한 것:** 아래 입력은 CI는 통과하지만 로더는 거부한다. 번들 설정은 `flutter test`가 로더로 읽으므로, 이런 값을 넣어도 CI에서 함께 걸린다.
+      - 정수 자리의 `5.0`·`1e3`: jsonschema는 정수로 보지만, Dart `jsonDecode`는 double을 돌려준다.
+      - 64비트를 넘는 정수
+      - host가 없는 URI(`urn:isbn:...`), int 범위를 넘는 포트
   - prod 제약(https, 개발용 옵션 금지)을 한 번 더 검사한다.
   - **권한 (#3):** 설정 파일은 플랫폼 공통이라 플랫폼마다 건너뛸 권한이 있다.
     - 권한 요청 코드(8·9·11·13단계)는 시작 시 목록을 `PermissionsConfig.requestOnLaunchOn(defaultTargetPlatform)`으로만 받는다. 설정 원본 목록은 공개하지 않는다.
@@ -163,19 +209,20 @@ flavor별 build configuration을 만들 때 각 xcconfig에서 `APP_DISPLAY_NAME
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
   - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류를 포함해 모든 설정 오류에 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 모르는 키와 스키마·모델 일치(#4), 확인 화면과 설정 실패 화면 위젯 테스트(45개).
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 플랫폼별 권한 목록, 모르는 키와 스키마·모델 일치(#4), 범위·형식 제약과 스키마 일치(#5), 확인 화면과 설정 실패 화면 위젯 테스트(70개).
 
 ## 6. 확인 결과
 
 | 항목 | 결과 |
 |---|---|
 | `flutter analyze` | 이슈 없음 |
-| `flutter test` | 45개 통과 (#4 반영 후) |
+| `flutter test` | 70개 통과 (#5 반영 후) |
 | `flutter build apk --debug --flavor dev` / `stg` | 성공 |
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |
 | 병합된 prod 매니페스트 | 권한 8개(+ AndroidX 내부 권한), minSdk 28, targetSdk 36 |
-| iOS 빌드·실행 | **미확인** (Windows 환경. macOS에서 확인 필요) |
+| iOS 시뮬레이터(iPhone 17) dev·stg·prod 빌드·실행 (#38) | 세 flavor 함께 설치, 홈 화면 이름 U4 DEV·U4 STG·U4, 설정 확인 화면의 flavor 정상 |
+| iOS 실기기 실행 | **미확인** |
 | Android 실기기 실행 | **미확인** (에뮬레이터로만 확인) |
 
-완료 기준 "양쪽 실기기에서 실행"은 iOS 빌드와 실기기 확인이 남아 있다.
+완료 기준 "양쪽 실기기에서 실행"은 iOS 실기기 확인이 남아 있다.

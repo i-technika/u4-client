@@ -18,7 +18,7 @@
 - 마일스톤 브랜치 `milestone/m<N>`을 `main`에서 만들고, Draft PR로 유지합니다.
 - 서브이슈(`[M<N>-<순번>]`)는 `issue/<번호>-<키워드>` 브랜치에서 작업해 마일스톤 브랜치로 squash 머지합니다.
 - 마일스톤이 끝나면 PR을 Ready로 바꿔 전체 CI를 통과시킨 뒤 `main`에 merge 커밋으로 머지합니다.
-- CI: 마일스톤 브랜치 대상 PR은 `Sub-issue Linux CI`(analyze·test·dev APK·설정 스키마 검증), `main` 대상 PR은 `Milestone Full Multi-Platform CI`(analyze·test·설정 스키마 검증, Android 3개 flavor, iOS no-codesign). 설정 스키마 검증은 로컬에서도 `bash tool/validate_config.sh`로 돌릴 수 있습니다(의존성: `tool/requirements-ci.txt`)
+- CI: 마일스톤 브랜치 대상 PR은 `Sub-issue Linux CI`(analyze·test·dev APK·설정 스키마 검증), `main` 대상 PR은 `Milestone Full Multi-Platform CI`(analyze·test·설정 스키마 검증, Android 3개 flavor, iOS no-codesign). 설정 스키마 검증은 로컬에서도 `bash tool/validate_config.sh`로 돌릴 수 있습니다(의존성: `tool/requirements-ci.txt`). iOS flavor별 bundle ID·앱 이름은 macOS에서 `bash tool/check_ios_flavors.sh`로 확인합니다
 
 Claude Code에서는 `/open-ms <에픽번호>`, `/fix-issue <서브이슈번호>`, `/close-ms <에픽번호>`로 이 흐름을 실행합니다 (`.claude/skills/`).
 
@@ -50,16 +50,13 @@ milestone.md 마일스톤 체크리스트
 ```sh
 flutter pub get
 
-# Android: --flavor로 고른다
+# Android·iOS 모두 --flavor로 고른다 (iOS는 Xcode scheme dev/stg/prod)
 flutter run --flavor dev
 flutter build apk --release --flavor prod
-
-# iOS: Xcode flavor가 아직 없어 dart-define으로 고른다 (docs/phase-1-setup.md 2장)
-flutter run --dart-define=FLAVOR=dev
-flutter build ios --release --dart-define=FLAVOR=prod
+flutter build ios --release --flavor prod
 ```
 
-release 빌드는 flavor를 지정하지 않으면 시작하지 않습니다.
+release 빌드는 flavor를 지정하지 않으면 시작하지 않습니다. iOS는 flavor 없는 scheme이 없어 `--flavor` 없이 빌드할 수 없습니다.
 
 ```sh
 flutter analyze
