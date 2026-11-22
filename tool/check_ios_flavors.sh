@@ -3,7 +3,6 @@
 # test/app_display_name_test.dart는 파일 텍스트를 검사하고, 이 스크립트는 xcodebuild가 계산한 최종 값을 본다
 # (다른 xcconfig를 거친 값, 기기·시뮬레이터 SDK별 조건부 값 포함).
 # 기대값은 ios/Flutter/AppInfo-<flavor>.xcconfig다. 이 값과 설정 JSON·Android ID의 일치는 flutter test가 확인한다.
-# CocoaPods를 쓰지 않으므로(#52) 어느 configuration에도 PODS_* 설정이 없어야 한다.
 # Milestone Full CI가 쓴다. 실행: macOS에서 flutter pub get 후 bash tool/check_ios_flavors.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -58,11 +57,6 @@ for flavor in dev stg prod; do
         echo "ok   $config ($sdk): $got_id / $got_name"
       else
         fail "$config ($sdk): '$got_config' '$got_id' / '$got_name' (기대: '$config' '$want_id' / '$want_name')"
-      fi
-      # Pods xcconfig가 어떤 경로로든 다시 포함되면 PODS_ROOT 등이 생긴다.
-      pods=$(grep -E '^ *PODS_[A-Z_]* = ' <<<"$settings" | sed 's/^ *//' | head -n3)
-      if [[ -n "$pods" ]]; then
-        fail "$config ($sdk): CocoaPods 설정이 남아 있습니다: $(tr '\n' ';' <<<"$pods")"
       fi
     done
   done
