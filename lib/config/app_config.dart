@@ -293,23 +293,34 @@ enum ExternalLinkMode { system, inAppBrowser, block }
 
 @immutable
 class NavigationConfig {
-  NavigationConfig._(_Reader r)
-    : androidBackMode = r
-          .child('androidBack')
-          .choice(
-            'mode',
-            AndroidBackMode.values,
-            AndroidBackMode.historyThenExit,
-          ),
-      exitConfirm = r
-          .child('androidBack')
-          .choice('exitConfirm', ExitConfirm.values, ExitConfirm.doubleTap),
-      iosSwipeBack = r.boolean('iosSwipeBack', true),
-      externalLinkMode = r.choice(
+  factory NavigationConfig._(_Reader r) {
+    final back = r.child('androidBack');
+    return NavigationConfig._of(
+      androidBackMode: back.choice(
+        'mode',
+        AndroidBackMode.values,
+        AndroidBackMode.historyThenExit,
+      ),
+      exitConfirm: back.choice(
+        'exitConfirm',
+        ExitConfirm.values,
+        ExitConfirm.doubleTap,
+      ),
+      iosSwipeBack: r.boolean('iosSwipeBack', true),
+      externalLinkMode: r.choice(
         'externalLinkMode',
         ExternalLinkMode.values,
         ExternalLinkMode.system,
-      );
+      ),
+    );
+  }
+
+  const NavigationConfig._of({
+    required this.androidBackMode,
+    required this.exitConfirm,
+    required this.iosSwipeBack,
+    required this.externalLinkMode,
+  });
 
   final AndroidBackMode androidBackMode;
   final ExitConfirm exitConfirm;
@@ -323,16 +334,29 @@ enum PopupPresentation { push, modal, sheet }
 
 @immutable
 class PopupConfig {
-  PopupConfig._(_Reader r)
-    : presentation = r.choice(
-        'presentation',
-        PopupPresentation.values,
-        PopupPresentation.push,
-      ),
-      toolbarCloseButton = r.child('toolbar').boolean('closeButton', true),
-      toolbarTitle = r.child('toolbar').boolean('title', true),
-      toolbarProgressBar = r.child('toolbar').boolean('progressBar', true),
-      maxDepth = r.integer('maxDepth', 5);
+  factory PopupConfig._(_Reader r) {
+    final presentation = r.choice(
+      'presentation',
+      PopupPresentation.values,
+      PopupPresentation.push,
+    );
+    final toolbar = r.child('toolbar');
+    return PopupConfig._of(
+      presentation: presentation,
+      toolbarCloseButton: toolbar.boolean('closeButton', true),
+      toolbarTitle: toolbar.boolean('title', true),
+      toolbarProgressBar: toolbar.boolean('progressBar', true),
+      maxDepth: r.integer('maxDepth', 5),
+    );
+  }
+
+  const PopupConfig._of({
+    required this.presentation,
+    required this.toolbarCloseButton,
+    required this.toolbarTitle,
+    required this.toolbarProgressBar,
+    required this.maxDepth,
+  });
 
   final PopupPresentation presentation;
   final bool toolbarCloseButton;
@@ -347,11 +371,23 @@ enum DialogStyle { platform, material, cupertino }
 
 @immutable
 class DialogConfig {
-  DialogConfig._(_Reader r)
-    : style = r.choice('style', DialogStyle.values, DialogStyle.platform),
-      okLabel = r.child('labels').optString('ok'),
-      cancelLabel = r.child('labels').optString('cancel'),
-      leavePageLabel = r.child('labels').optString('leavePage');
+  factory DialogConfig._(_Reader r) {
+    final style = r.choice('style', DialogStyle.values, DialogStyle.platform);
+    final labels = r.child('labels');
+    return DialogConfig._of(
+      style: style,
+      okLabel: labels.optString('ok'),
+      cancelLabel: labels.optString('cancel'),
+      leavePageLabel: labels.optString('leavePage'),
+    );
+  }
+
+  const DialogConfig._of({
+    required this.style,
+    required this.okLabel,
+    required this.cancelLabel,
+    required this.leavePageLabel,
+  });
 
   final DialogStyle style;
 
@@ -390,22 +426,41 @@ enum CacheMode {
 
 @immutable
 class NetworkConfig {
-  NetworkConfig._(_Reader r)
-    : offlinePage = r.optString('offlinePage'),
-      errorPage = r.optString('errorPage'),
-      retryAutoOnReconnect = r.child('retry').boolean('autoOnReconnect', true),
-      retryMaxAttempts = r.child('retry').integer('maxAttempts', 3),
-      allowHttp = r.boolean('allowHttp', false),
-      ignoreSslErrors = r.boolean('ignoreSslErrors', false),
-      debuggable = r.boolean('debuggable', false),
-      secureScreen = r.boolean('secureScreen', false),
-      clearCacheOnLaunch = r.boolean('clearCacheOnLaunch', false),
-      cacheMode = r.choiceBy(
+  factory NetworkConfig._(_Reader r) {
+    final offlinePage = r.optString('offlinePage');
+    final errorPage = r.optString('errorPage');
+    final retry = r.child('retry');
+    return NetworkConfig._of(
+      offlinePage: offlinePage,
+      errorPage: errorPage,
+      retryAutoOnReconnect: retry.boolean('autoOnReconnect', true),
+      retryMaxAttempts: retry.integer('maxAttempts', 3),
+      allowHttp: r.boolean('allowHttp', false),
+      ignoreSslErrors: r.boolean('ignoreSslErrors', false),
+      debuggable: r.boolean('debuggable', false),
+      secureScreen: r.boolean('secureScreen', false),
+      clearCacheOnLaunch: r.boolean('clearCacheOnLaunch', false),
+      cacheMode: r.choiceBy(
         'cacheMode',
         CacheMode.values,
         CacheMode.standard,
         (m) => m.wire,
-      );
+      ),
+    );
+  }
+
+  const NetworkConfig._of({
+    required this.offlinePage,
+    required this.errorPage,
+    required this.retryAutoOnReconnect,
+    required this.retryMaxAttempts,
+    required this.allowHttp,
+    required this.ignoreSslErrors,
+    required this.debuggable,
+    required this.secureScreen,
+    required this.clearCacheOnLaunch,
+    required this.cacheMode,
+  });
 
   final String? offlinePage;
   final String? errorPage;
@@ -469,6 +524,8 @@ class _Reader {
   final Map<String, Object?> _map;
   final String _path;
 
+  /// 하위 object를 읽는 reader. JSON object 하나는 reader 하나로 읽도록
+  /// 같은 [key]로는 한 번만 부른다.
   _Reader child(String key) {
     final v = _map[key];
     if (v == null) return _Reader(const {}, '$_path.$key');
