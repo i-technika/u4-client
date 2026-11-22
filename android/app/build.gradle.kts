@@ -16,7 +16,8 @@ plugins {
 fun appNameOf(flavor: String): String {
     val file = layout.projectDirectory.file("../../config/app_config.$flavor.json")
     val path = file.asFile.path
-    val text = providers.fileContents(file).asText.orNull
+    // asText는 JVM 기본 문자셋(MS949 등)으로 읽어 한글 이름이 깨질 수 있으므로 UTF-8로 직접 읽는다.
+    val text = providers.fileContents(file).asBytes.orNull?.toString(Charsets.UTF_8)
         ?: throw GradleException("$path 파일이 없습니다")
     val root = try {
         JsonSlurper().parseText(text) as? Map<*, *>
@@ -28,16 +29,19 @@ fun appNameOf(flavor: String): String {
         throw GradleException("$path: app.name이 없거나 비어 있습니다")
     }
     // android:label 값으로 그대로 쓸 수 없는 이름은 막는다. 런처 이름이 Dart 쪽 이름과 달라진다.
-    // - @·?로 시작: aapt가 리소스 참조로 해석한다 (앞 공백은 무시된다).
+    // test/app_display_name_test.dart가 같은 규칙으로 번들 설정을 검사한다. 고칠 때 함께 고친다.
+    // - @·?로 시작: aapt가 리소스 참조로 해석한다 (앞의 ASCII 공백은 aapt가 무시한다).
     // - \: aapt가 이스케이프로 해석해 글자가 사라지거나 바뀐다.
     // - ${: 매니페스트 병합기가 placeholder로 다시 치환한다.
-    // - 글자·숫자가 하나도 없음: 폭 없는 공백 등으로 런처 이름이 빈 칸이 된다.
-    val trimmed = name.trim()
+    // - 글자(L*)·십진 숫자(Nd)가 하나도 없음: 폭 없는 공백 등으로 런처 이름이 빈 칸이 된다.
+    //   보조 평면 글자도 세도록 code point 단위로 본다.
+    val head = name.trimStart { it == ' ' || it in '\t'..'\r' }
     val problem = when {
-        trimmed.startsWith("@") || trimmed.startsWith("?") -> "@ 또는 ?로 시작할 수 없습니다"
+        head.startsWith("@") || head.startsWith("?") -> "@ 또는 ?로 시작할 수 없습니다"
         name.contains("\\") -> "\\를 쓸 수 없습니다"
         name.contains("\${") -> "\${를 쓸 수 없습니다"
-        name.none { it.isLetterOrDigit() } -> "글자나 숫자가 하나 이상 있어야 합니다"
+        name.codePoints().noneMatch { Character.isLetterOrDigit(it) } ->
+            "글자나 숫자가 하나 이상 있어야 합니다"
         else -> null
     }
     if (problem != null) {

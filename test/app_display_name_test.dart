@@ -22,35 +22,45 @@ void main() {
           .listSync(recursive: true)
           .whereType<File>()
           .where((f) => f.path.endsWith('AndroidManifest.xml'));
+      // activity·activity-alias의 label도 런처 이름을 덮으므로 전부 센다.
+      // 작은따옴표와 = 앞뒤 공백도 XML 문법이므로 함께 잡는다.
       final labels = [
         for (final f in manifests)
-          ...RegExp(r'android:label="([^"]*)"')
+          ...RegExp(r'''android:label\s*=\s*(["'])(.*?)\1''')
               .allMatches(f.readAsStringSync())
-              .map((m) => m.group(1)),
+              .map((m) => m.group(2)),
       ];
       expect(labels, [r'${appName}']);
     });
 
-    test('build.gradle.kts는 appName을 JSON에서 읽은 값으로 한 번만 넣는다', () {
+    test('build.gradle.kts는 flavor마다 그 flavor JSON의 이름을 한 번만 넣는다', () {
       final gradle = File('android/app/build.gradle.kts').readAsStringSync();
       // put("appName", ...), mapOf("appName" to ...), buildType 쪽 placeholder도 함께 막는다.
       expect('"appName"'.allMatches(gradle), hasLength(1));
+      // appNameOf("prod")처럼 한 flavor 값을 모든 flavor에 넣는 실수도 막는다.
+      // appNameOf가 실제로 JSON 값을 돌려주는지는 이 테스트로 보지 않는다 (Android 빌드로 확인).
       expect(
         gradle,
-        matches(RegExp(r'manifestPlaceholders\["appName"\]\s*=\s*appNameOf\(')),
+        matches(
+          RegExp(
+            r'productFlavors\.configureEach\s*\{\s*'
+            r'manifestPlaceholders\["appName"\]\s*=\s*appNameOf\(name\)\s*\}',
+          ),
+        ),
       );
     });
 
     for (final flavor in Flavor.values) {
       test('${flavor.name}의 app.name을 android:label로 쓸 수 있다', () {
-        // build.gradle.kts의 appNameOf와 같은 규칙이다.
+        // build.gradle.kts의 appNameOf와 같은 규칙이다. 한쪽을 고치면 다른 쪽도 고친다.
+        // Kotlin trimStart { ' ' || '\t'..'\r' }, Character.isLetterOrDigit(code point)와 맞춘다.
         final name = appNameOf(flavor);
-        final trimmed = name.trim();
-        expect(trimmed, isNot(startsWith('@')));
-        expect(trimmed, isNot(startsWith('?')));
+        final head = name.replaceFirst(RegExp(r'^[ \t\n\v\f\r]+'), '');
+        expect(head, isNot(startsWith('@')));
+        expect(head, isNot(startsWith('?')));
         expect(name, isNot(contains(r'\')));
         expect(name, isNot(contains(r'${')));
-        expect(name, contains(RegExp(r'[\p{L}\p{N}]', unicode: true)));
+        expect(name, contains(RegExp(r'[\p{L}\p{Nd}]', unicode: true)));
       });
     }
   });
@@ -82,6 +92,26 @@ void main() {
         expect(definitions, isEmpty);
       });
     }
+
+    test('지역화 InfoPlist.strings가 CFBundleDisplayName을 덮어쓰지 않는다', () {
+      // ko.lproj/InfoPlist.strings 등에 값이 있으면 그 언어 기기에서 홈 화면 이름이 바뀐다.
+      final overrides = Directory('ios/Runner')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where(
+            (f) =>
+                f.path.endsWith('InfoPlist.strings') ||
+                f.path.endsWith('.xcstrings'),
+          )
+          // .strings는 UTF-16일 수 있다. 키는 ASCII이므로 0 바이트를 빼고 찾는다.
+          .where(
+            (f) =>
+                String.fromCharCodes(f.readAsBytesSync().where((b) => b != 0))
+                    .contains('CFBundleDisplayName'),
+          )
+          .map((f) => f.path);
+      expect(overrides, isEmpty);
+    });
 
     test('Xcode 프로젝트 설정이 APP_DISPLAY_NAME을 덮어쓰지 않는다', () {
       final pbxproj = File('ios/Runner.xcodeproj/project.pbxproj')
