@@ -113,14 +113,14 @@ iOS는 bundle ID가 `com.itechnika.u4` 하나뿐이고, flavor는 `--dart-define
 - `lib/main.dart`: flavor 설정을 읽고 확인 화면을 띄운다. 2단계에서 `AppWebView`로 바꾼다.
   - 설정을 읽지 못하면(`AppConfigException`) `ConfigErrorApp`을 띄우고 예외를 `FlutterError.reportError`로 보고한다. 예외 내용은 debug에서만 보여 준다.
   - `AppConfig.load`는 asset 누락, JSON 형식 오류, 최상위 타입 오류도 파일 경로를 붙여 `AppConfigException`으로 던진다. 그 밖의 예외는 코드 버그로 보고 잡지 않는다.
-- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 확인 화면과 설정 실패 화면 위젯 테스트(21개).
+- `test/`: 세 설정 파일 로딩, 기본값, 검증 실패 케이스, 확인 화면과 설정 실패 화면 위젯 테스트(22개).
 
 ## 6. 확인 결과
 
 | 항목 | 결과 |
 |---|---|
 | `flutter analyze` | 이슈 없음 |
-| `flutter test` | 12개 통과 |
+| `flutter test` | 22개 통과 |
 | `flutter build apk --debug --flavor dev` / `stg` | 성공 |
 | `flutter build apk --release --flavor prod` (R8) | 성공 |
 | Android 에뮬레이터(API 36.1)에서 dev·prod 실행 | 설정 확인 화면 정상, dev·prod 함께 설치됨 |

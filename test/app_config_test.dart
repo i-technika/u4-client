@@ -58,6 +58,14 @@ void main() {
     test('cacheMode의 JSON 값 default를 읽는다', () {
       final config = AppConfig.fromJson({
         ...minimal,
+        'network': {'cacheMode': 'default'},
+      });
+      expect(config.network.cacheMode, CacheMode.standard);
+    });
+
+    test('cacheMode의 JSON 값 noCache를 읽는다', () {
+      final config = AppConfig.fromJson({
+        ...minimal,
         'network': {'cacheMode': 'noCache'},
       });
       expect(config.network.cacheMode, CacheMode.noCache);
