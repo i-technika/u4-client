@@ -9,7 +9,20 @@
 | 0 | 요구사항·설정 스키마 확정 | [docs/phase-0-requirements.md](docs/phase-0-requirements.md) |
 | 1 | 프로젝트 셋업 | [docs/phase-1-setup.md](docs/phase-1-setup.md) |
 
-2단계 이후 작업은 GitHub 마일스톤으로 관리합니다.
+전체 마일스톤(M1~M15)은 [milestone.md](milestone.md)에 있습니다. 각 마일스톤은 GitHub 마일스톤·에픽 이슈(`[M<N>]`)와 1:1로 대응하고, 진행 상태는 프로젝트 보드 [U4 Client](https://github.com/users/i-technika/projects/8)에서 봅니다.
+
+## 작업 방식
+
+마일스톤 에픽 → 서브이슈 구조로 진행합니다. 규칙의 기준은 [CLAUDE.md](CLAUDE.md)입니다.
+
+- 마일스톤 브랜치 `milestone/m<N>`을 `main`에서 만들고, Draft PR로 유지합니다.
+- 서브이슈(`[M<N>-<순번>]`)는 `issue/<번호>-<키워드>` 브랜치에서 작업해 마일스톤 브랜치로 squash 머지합니다.
+- 마일스톤이 끝나면 PR을 Ready로 바꿔 전체 CI를 통과시킨 뒤 `main`에 merge 커밋으로 머지합니다.
+- CI: 마일스톤 브랜치 대상 PR은 `Sub-issue Linux CI`(analyze·test·dev APK), `main` 대상 PR은 `Milestone Full Multi-Platform CI`(analyze·test, Android 3개 flavor, iOS no-codesign)
+
+Claude Code에서는 `/open-ms <에픽번호>`, `/fix-issue <서브이슈번호>`, `/close-ms <에픽번호>`로 이 흐름을 실행합니다 (`.claude/skills/`).
+
+M1은 이 규칙을 도입하기 전에 시작해 `step1/project-setup` 브랜치(PR #12)로 마무리하고, M2부터 위 규칙을 씁니다.
 
 ## 구성
 
@@ -20,6 +33,10 @@ lib/         앱 코드
 test/        Dart 테스트
 test-page/   단계별 검증용 기능 테스트 HTML 페이지
 android/ ios/
+.claude/     Claude Code 프로젝트 스킬(/open-ms, /fix-issue, /close-ms)과 보드 스크립트
+.github/     CI 워크플로
+CLAUDE.md    프로젝트 규칙 (단일 기준)
+milestone.md 마일스톤 체크리스트
 ```
 
 ## 개발 환경
