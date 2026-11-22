@@ -204,13 +204,26 @@ void main() {
       // READ_MEDIA_IMAGES 제거는 Android에서 photos를 요청하지 않는 근거다. 제거를 풀면
       // photos의 Android 동작(API 33+ READ_MEDIA_IMAGES, 32 이하는 READ_EXTERNAL_STORAGE
       // 제거도 풀고 storage로 매핑)을 함께 정한다.
-      const removed = [
-        'READ_MEDIA_IMAGES',
-        'READ_MEDIA_VIDEO',
-        'READ_MEDIA_AUDIO',
-        'READ_EXTERNAL_STORAGE',
-        'WRITE_EXTERNAL_STORAGE',
-      ];
+      // 목록 원본은 tool/android_forbidden_permissions.txt이고 APK 권한 검사
+      // (tool/check_android_permissions.sh, #36)와 함께 쓴다. 파일이 없어도 이 그룹만
+      // 실패하도록 테스트 안에서 읽는다.
+      List<String> forbidden() =>
+          File('tool/android_forbidden_permissions.txt')
+              .readAsLinesSync()
+              .map((l) => l.replaceFirst(RegExp('#.*'), '').trim())
+              .where((l) => l.isNotEmpty)
+              .toList();
+
+      // 파일에서 항목이 빠지면 두 검사가 함께 조용히 약해지므로 내용을 여기서 고정한다.
+      test('금지 권한 목록이 미디어·저장소 권한 5개다', () {
+        expect(forbidden(), [
+          'READ_MEDIA_IMAGES',
+          'READ_MEDIA_VIDEO',
+          'READ_MEDIA_AUDIO',
+          'READ_EXTERNAL_STORAGE',
+          'WRITE_EXTERNAL_STORAGE',
+        ]);
+      });
 
       /// 주석을 뺀 뒤 `<uses-permission>`·`<uses-permission-sdk-23>` 선언을
       /// 권한 이름 → 선언 목록으로 읽는다. 같은 권한을 여러 번 선언해도 모두 남긴다.
@@ -246,14 +259,19 @@ void main() {
         return result;
       }
 
-      /// [decls]가 모두 selector 없는 `<uses-permission tools:node="remove">`인지 확인한다.
+      /// [decls]가 모두 selector 없는 `tools:node="remove"` 선언인지 확인한다.
       /// `tools:node="remove"`는 같은 요소 타입만 지우고, selector가 있으면 그 라이브러리 것만 지운다.
+      /// 그래서 라이브러리가 `<uses-permission-sdk-23>`으로 넣으면 같은 태그로 제거해야 한다 (#36).
       void expectOnlyRemoval(
         String where,
         List<({String tag, Map<String, String> attrs})> decls,
       ) {
         for (final d in decls) {
-          expect(d.tag, 'uses-permission', reason: where);
+          expect(
+            d.tag,
+            isIn(['uses-permission', 'uses-permission-sdk-23']),
+            reason: where,
+          );
           expect(d.attrs['tools:node'], 'remove', reason: where);
           expect(d.attrs.containsKey('tools:selector'), isFalse, reason: where);
         }
@@ -263,9 +281,14 @@ void main() {
         final declared = declarations(
           File('android/app/src/main/AndroidManifest.xml'),
         );
-        for (final name in removed) {
-          expect(declared[name], isNotEmpty, reason: name);
-          expectOnlyRemoval('main: $name', declared[name]!);
+        for (final name in forbidden()) {
+          final decls = declared[name] ?? [];
+          expect(
+            decls.where((d) => d.tag == 'uses-permission'),
+            isNotEmpty,
+            reason: name,
+          );
+          expectOnlyRemoval('main: $name', decls);
         }
         expect(
           AppPermission.photos.isRequestableOn(TargetPlatform.android),
@@ -280,9 +303,10 @@ void main() {
             .map((d) => File('${d.path}/AndroidManifest.xml'))
             .where((f) => f.existsSync());
         expect(manifests, isNotEmpty);
+        final names = forbidden();
         for (final manifest in manifests) {
           final declared = declarations(manifest);
-          for (final name in removed) {
+          for (final name in names) {
             expectOnlyRemoval('${manifest.path}: $name', declared[name] ?? []);
           }
         }
